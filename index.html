@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tienda de Productos Femeninos</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <h1 class="logo">BloomCare</h1>
+        <nav>
+          <button id="btn-products" class="nav-btn">Productos</button>
+          <button id="btn-cart" class="nav-btn">Carrito (<span id="cart-count">0</span>)</button>
+          <button id="btn-auth" class="nav-btn">Iniciar sesión / Registro</button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <h2>Cuidado y bienestar femenino</h2>
+        <p>Productos seleccionados para tu comodidad y salud. Compra fácil y seguro.</p>
+      </section>
+
+      <section id="products" class="products-grid">
+        <!-- Productos generados por JS -->
+      </section>
+
+      <aside id="cart" class="cart hidden">
+        <h3>Tu carrito</h3>
+        <ul id="cart-items"></ul>
+        <div class="cart-footer">
+          <strong>Total: $<span id="cart-total">0.00</span></strong>
+          <button id="checkout-btn" class="primary">Pagar</button>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Modal de Auth -->
+    <div id="auth-modal" class="modal hidden">
+      <div class="modal-content">
+        <button id="close-auth" class="close">×</button>
+        <div class="auth-forms">
+          <form id="login-form" class="auth-form">
+            <h3>Iniciar sesión</h3>
+            <label>Email<input type="email" id="login-email" required></label>
+            <label>Contraseña<input type="password" id="login-password" required></label>
+            <button type="submit" class="primary">Entrar</button>
+            <p class="muted">¿No tienes cuenta? <a href="#" id="show-register">Regístrate</a></p>
+          </form>
+
+          <form id="register-form" class="auth-form hidden">
+            <h3>Registro</h3>
+            <label>Nombre<input type="text" id="reg-name" required></label>
+            <label>Email<input type="email" id="reg-email" required></label>
+            <label>Contraseña<input type="password" id="reg-password" required></label>
+            <button type="submit" class="primary">Crear cuenta</button>
+            <p class="muted">¿Ya tienes cuenta? <a href="#" id="show-login">Inicia sesión</a></p>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <footer class="site-footer">
+      <div class="container">
+        <p>© <span id="year"></span> BloomCare — Productos femeninos</p>
+        <p class="muted">Sitio de demostración. Para un lanzamiento real, se recomienda integrar un back-end seguro y pasarelas de pago.</p>
+      </div>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
