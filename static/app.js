@@ -1,20 +1,48 @@
 // Lógica simple de frontend: productos, carrito y auth en localStorage
-const PRODUCTS = [
-  {id:1,name:'Compresas Suaves',price:5.99,desc:'Paquete de 20 compresas ultra suaves.',image:'https://images.unsplash.com/photo-1592928306923-7a1b9b2fec1b?auto=format&fit=crop&w=800&q=60'},
-  {id:2,name:'Protectores Diarios',price:3.49,desc:'Protectores discretos para el día a día.',image:'https://images.unsplash.com/photo-1542831371-d531d36971e6?auto=format&fit=crop&w=800&q=60'},
-  {id:3,name:'Copas Menstruales',price:19.99,desc:'Reutilizable, ecológica y cómoda.',image:'https://images.unsplash.com/photo-1603575448362-7b6d2d7f9d76?auto=format&fit=crop&w=800&q=60'},
-  {id:4,name:'Toallitas Íntimas',price:4.5,desc:'Frescor y cuidado íntimo.',image:'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=800&q=60'}
+
+// Helper para generar IDs tipo MongoDB (ObjectId simulado)
+const generateObjectId = () => {
+  const timestamp = (new Date().getTime() / 1000 | 0).toString(16);
+  return timestamp + 'xxxxxxxxxxxxxxxx'.replace(/[x]/g, () => (Math.random() * 16 | 0).toString(16)).toLowerCase();
+};
+
+const DEFAULT_PRODUCTS = [
+  {_id:'65d4f1a1e1b2c3d4e5f6a001',name:'Compresas Suaves',price:1000,desc:'Paquete de 20 compresas ultra suaves.',image:'https://images.unsplash.com/photo-1592928306923-7a1b9b2fec1b?auto=format&fit=crop&w=800&q=60'},
+  {_id:'65d4f1a1e1b2c3d4e5f6a002',name:'Protectores Diarios',price:1000,desc:'Protectores discretos para el día a día.',image:'https://images.unsplash.com/photo-1542831371-d531d36971e6?auto=format&fit=crop&w=800&q=60'},
+  {_id:'65d4f1a1e1b2c3d4e5f6a003',name:'Copas Menstruales',price:1000,desc:'Reutilizable, ecológica y cómoda.',image:'https://images.unsplash.com/photo-1603575448362-7b6d2d7f9d76?auto=format&fit=crop&w=800&q=60'},
+  {_id:'65d4f1a1e1b2c3d4e5f6a004',name:'Toallitas Íntimas',price:1000,desc:'Frescor y cuidado íntimo.',image:'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=800&q=60'}
 ];
+
+// Cargar productos de localStorage o usar los por defecto
+function getProductsData() {
+  const stored = localStorage.getItem('products');
+  if (stored) {
+    const data = JSON.parse(stored);
+    // Migración: Si los datos viejos no tienen _id, reseteamos para evitar errores
+    if(data.length > 0 && !data[0]._id) {
+      localStorage.setItem('products', JSON.stringify(DEFAULT_PRODUCTS));
+      return DEFAULT_PRODUCTS;
+    }
+    return data;
+  }
+  // Si es la primera vez, guardamos los default
+  localStorage.setItem('products', JSON.stringify(DEFAULT_PRODUCTS));
+  return DEFAULT_PRODUCTS;
+}
 
 // ---------- UTILIDADES ----------
 const $ = (s)=>document.querySelector(s);
 const $$ = (s)=>document.querySelectorAll(s);
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('es-CL', {style: 'currency', currency: 'CLP'}).format(amount);
+};
 
 // ---------- RENDER ----------
 function renderProducts(){
   const container = $('#products');
   container.innerHTML='';
-  PRODUCTS.forEach(p=>{
+  const products = getProductsData();
+  products.forEach(p=>{
     const card = document.createElement('article');
     card.className='product-card';
     card.innerHTML = `
@@ -22,8 +50,8 @@ function renderProducts(){
       <h4>${p.name}</h4>
       <p>${p.desc}</p>
       <div class="card-actions">
-        <strong>$${p.price.toFixed(2)}</strong>
-        <button class="btn primary" data-id="${p.id}">Agregar</button>
+        <strong>${formatCurrency(p.price)}</strong>
+        <button class="btn primary" data-id="${p._id}">Agregar</button>
       </div>`;
     container.appendChild(card);
   });
@@ -37,16 +65,17 @@ function saveCart(items){
   localStorage.setItem('cart',JSON.stringify(items));
 }
 function addToCart(id){
-  const product = PRODUCTS.find(p=>p.id===id);
+  const products = getProductsData();
+  const product = products.find(p=>p._id===id);
   if(!product) return;
   const cart = getCart();
-  const item = cart.find(i=>i.id===id);
-  if(item) item.qty+=1; else cart.push({id:product.id,name:product.name,price:product.price,qty:1});
+  const item = cart.find(i=>i._id===id);
+  if(item) item.qty+=1; else cart.push({_id:product._id,name:product.name,price:product.price,qty:1});
   saveCart(cart);
   renderCart();
 }
 function removeFromCart(id){
-  let cart = getCart().filter(i=>i.id!==id);
+  let cart = getCart().filter(i=>i._id!==id);
   saveCart(cart);
   renderCart();
 }
@@ -59,30 +88,48 @@ function renderCart(){
   let total=0, qty=0;
   cart.forEach(i=>{
     const li = document.createElement('li');
-    li.innerHTML = `${i.name} x ${i.qty} - $${(i.price*i.qty).toFixed(2)} <button class="btn" data-remove="${i.id}">Eliminar</button>`;
+    li.innerHTML = `${i.name} x ${i.qty} - ${formatCurrency(i.price*i.qty)} <button class="btn" data-remove="${i._id}">Eliminar</button>`;
     list.appendChild(li);
     total += i.price*i.qty; qty += i.qty;
   });
-  totalEl.textContent = total.toFixed(2);
+  totalEl.textContent = formatCurrency(total);
   count.textContent = qty;
 }
 
 // ---------- AUTH (demo localStorage) ----------
+async function hashPassword(str) {
+  const msgBuffer = new TextEncoder().encode(str);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function getUsers(){
   return JSON.parse(localStorage.getItem('users')||'[]');
 }
+async function initAuth(){
+  // Solo crea el admin si NO existe la clave 'users' (primera vez que se entra a la web)
+  if(localStorage.getItem('users') === null){
+    const hashedPassword = await hashPassword('admin');
+    const defaultUsers = [{_id:generateObjectId(), name:'Administrador', email:'admin@bloomcare.com', password:hashedPassword}];
+    localStorage.setItem('users',JSON.stringify(defaultUsers));
+  }
+}
 function saveUsers(u){ localStorage.setItem('users',JSON.stringify(u)); }
-function registerUser(name,email,password){
+async function registerUser(name,email,password){
+  if(email === 'admin@bloomcare.com') return {ok:false,msg:'No se permite registrar cuenta de administrador.'};
   const users = getUsers();
   if(users.find(x=>x.email===email)) return {ok:false,msg:'Ya existe una cuenta con ese email'};
-  users.push({id:Date.now(),name,email,password});
+  const hashedPassword = await hashPassword(password);
+  users.push({_id:generateObjectId(),name,email,password:hashedPassword});
   saveUsers(users);
   setCurrentUser({name,email});
   return {ok:true};
 }
-function loginUser(email,password){
+async function loginUser(email,password){
   const users = getUsers();
-  const user = users.find(u=>u.email===email && u.password===password);
+  const hashedPassword = await hashPassword(password);
+  const user = users.find(u=>u.email===email && u.password===hashedPassword);
   if(!user) return {ok:false,msg:'Credenciales inválidas'};
   setCurrentUser({name:user.name,email:user.email});
   return {ok:true};
@@ -96,11 +143,20 @@ function renderAuthState(){
   const btn = $('#btn-auth');
   if(!btn) return; // Si no existe el botón (ej. página diferente), salir
 
+  // Limpiar botones extra si existen (como el de admin)
+  const adminBtn = $('#btn-admin-panel');
+  if(adminBtn) adminBtn.remove();
+
   if(user){
     btn.textContent = `Hola, ${user.name}`;
     btn.onclick = ()=>{
       // En lugar de alert, vamos al perfil
       window.location.href = '/profile';
+    }
+    // Si es admin, agregar botón de panel
+    if(user.email === 'admin@bloomcare.com') {
+      const nav = $('nav');
+      nav.insertAdjacentHTML('afterbegin', '<a href="/admin" id="btn-admin-panel" class="nav-btn" style="text-decoration:none; color:inherit; border-color: var(--color-accent); color: var(--color-accent);">Panel Admin</a>');
     }
   } else {
     btn.textContent = 'Iniciar sesión / Registro';
@@ -119,7 +175,7 @@ function renderProfile(){
   if($('#profile-name')) $('#profile-name').textContent = user.name;
   if($('#profile-name-input')) $('#profile-name-input').value = user.name;
   if($('#profile-email')) $('#profile-email').value = user.email;
-  if($('#profile-id')) $('#profile-id').value = user.id || 'N/A';
+  if($('#profile-id')) $('#profile-id').value = user._id || 'N/A';
   
   if($('#btn-logout-profile')){
     $('#btn-logout-profile').addEventListener('click', ()=>{
@@ -152,27 +208,62 @@ function updateUserProfile(name, email){
   saveUsers(users);
   
   // Actualizar sesión actual y UI
-  setCurrentUser({...currentUser, name, email, id: users[index].id});
+  setCurrentUser({...currentUser, name, email, _id: users[index]._id});
   if($('#profile-name')) $('#profile-name').textContent = name;
   alert('Perfil actualizado correctamente.');
 }
 
+// ---------- ADMIN ----------
+function renderAdminPanel() {
+  const user = getCurrentUser();
+  // Protección simple de ruta
+  if(!user || user.email !== 'admin@bloomcare.com') {
+    alert('Acceso denegado. Debes ser administrador.');
+    window.location.href = '/';
+    return;
+  }
+
+  const form = $('#admin-product-form');
+  if(form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = $('#prod-name').value.trim();
+      const desc = $('#prod-desc').value.trim();
+      const price = parseFloat($('#prod-price').value);
+      const image = $('#prod-image').value.trim();
+
+      if(!name || !desc || isNaN(price) || !image) return alert('Todos los campos son obligatorios');
+
+      const products = getProductsData();
+      const newId = generateObjectId(); // Generar ID estilo Mongo
+      
+      products.push({ _id: newId, name, price, desc, image });
+      localStorage.setItem('products', JSON.stringify(products));
+      
+      alert('Producto agregado correctamente');
+      form.reset();
+    });
+  }
+}
+
 // ---------- EVENTOS ----------
 function setupEvents(){
+  initAuth(); // Inicialización única de usuarios base
   // Solo renderizar si existen los elementos (para evitar errores en pag perfil)
   if($('#products')) renderProducts();
   if($('#cart-items')) renderCart();
   if($('#profile-name')) renderProfile(); // Lógica específica de perfil
+  if($('#admin-product-form')) renderAdminPanel(); // Lógica específica de admin
   
   renderAuthState();
   if($('#year')) $('#year').textContent = new Date().getFullYear();
 
   document.addEventListener('click',e=>{
     if(e.target.matches('[data-id]')){
-      addToCart(parseInt(e.target.dataset.id));
+      addToCart(e.target.dataset.id); // Ya no usamos parseInt porque _id es string
     }
     if(e.target.matches('[data-remove]')){
-      removeFromCart(parseInt(e.target.dataset.remove));
+      removeFromCart(e.target.dataset.remove); // Ya no usamos parseInt
     }
   });
   
@@ -263,8 +354,8 @@ function setupEvents(){
       toggleLoading(btn, true);
 
       // Simular retardo de red (1.5 segundos)
-      setTimeout(() => {
-        const r = registerUser(name,email,pass);
+      setTimeout(async () => {
+        const r = await registerUser(name,email,pass);
         toggleLoading(btn, false); // Desactivar spinner
 
         if(!r.ok) return showError('#register-error', r.msg);
@@ -289,8 +380,8 @@ function setupEvents(){
       clearErrors();
       toggleLoading(btn, true);
 
-      setTimeout(() => {
-        const r = loginUser(email,pass);
+      setTimeout(async () => {
+        const r = await loginUser(email,pass);
         toggleLoading(btn, false);
 
         if(!r.ok) return showError('#login-error', r.msg);
@@ -311,7 +402,7 @@ function setupEvents(){
       const user = getCurrentUser();
       if(!user) return alert('Debes iniciar sesión o registrarte para pagar.');
       // Simular pago
-      alert(`Gracias ${user.name}, tu pedido por $${cart.reduce((s,i)=>s+i.price*i.qty,0).toFixed(2)} ha sido registrado (simulado).`);
+      alert(`Gracias ${user.name}, tu pedido por ${formatCurrency(cart.reduce((s,i)=>s+i.price*i.qty,0))} ha sido registrado (simulado).`);
       saveCart([]);
       renderCart();
       $('#cart').classList.add('hidden');
