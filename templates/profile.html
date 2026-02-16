@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mi Perfil - BloomCare</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="/" style="text-decoration:none;"><h1 class="logo">BloomCare</h1></a>
+        <nav>
+          <a href="/" class="nav-btn" style="text-decoration:none; color:inherit;">Volver a la tienda</a>
+          <button id="btn-auth" class="nav-btn">Cerrar Sesión</button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container" style="padding-top: 40px; padding-bottom: 40px;">
+      <div class="profile-card">
+        <div class="profile-header">
+          <div class="avatar-placeholder">👤</div>
+          <h2 id="profile-name">Cargando...</h2>
+        </div>
+        
+        <div class="profile-body">
+          <div class="info-group">
+            <label>Nombre</label>
+            <input type="text" id="profile-name-input" value="...">
+          </div>
+
+          <div class="info-group">
+            <label>Correo Electrónico</label>
+            <input type="email" id="profile-email" value="...">
+          </div>
+          
+          <div class="info-group">
+            <label>ID de Usuario</label>
+            <input type="text" id="profile-id" readonly value="...">
+          </div>
+
+          <div class="profile-actions">
+            <button id="btn-save-profile" class="btn primary" style="margin-right: 10px;">Guardar Cambios</button>
+            <button id="btn-logout-profile" class="btn primary" style="background-color: #666;">Cerrar Sesión</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Reutilizamos app.js para la lógica de usuario -->
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

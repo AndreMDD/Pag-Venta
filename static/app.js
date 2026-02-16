@@ -94,10 +94,13 @@ function logout(){ localStorage.removeItem('currentUser'); renderAuthState(); }
 function renderAuthState(){
   const user = getCurrentUser();
   const btn = $('#btn-auth');
+  if(!btn) return; // Si no existe el botón (ej. página diferente), salir
+
   if(user){
     btn.textContent = `Hola, ${user.name}`;
     btn.onclick = ()=>{
-      if(confirm('¿Deseas cerrar sesión?')) logout();
+      // En lugar de alert, vamos al perfil
+      window.location.href = '/profile';
     }
   } else {
     btn.textContent = 'Iniciar sesión / Registro';
@@ -105,12 +108,64 @@ function renderAuthState(){
   }
 }
 
+// ---------- PERFIL ----------
+function renderProfile(){
+  const user = getCurrentUser();
+  if(!user){
+    // Si no hay usuario y estamos en perfil, volver al inicio
+    window.location.href = '/';
+    return;
+  }
+  if($('#profile-name')) $('#profile-name').textContent = user.name;
+  if($('#profile-name-input')) $('#profile-name-input').value = user.name;
+  if($('#profile-email')) $('#profile-email').value = user.email;
+  if($('#profile-id')) $('#profile-id').value = user.id || 'N/A';
+  
+  if($('#btn-logout-profile')){
+    $('#btn-logout-profile').addEventListener('click', ()=>{
+      if(confirm('¿Seguro que quieres salir?')){
+        logout();
+        window.location.href = '/';
+      }
+    });
+  }
+}
+
+function updateUserProfile(name, email){
+  const currentUser = getCurrentUser();
+  if(!currentUser) return;
+
+  const users = getUsers();
+  // Buscar al usuario en la lista por su email actual
+  const index = users.findIndex(u => u.email === currentUser.email);
+  
+  if(index === -1) return alert('Error: Usuario no encontrado.');
+
+  // Verificar si el nuevo email ya está en uso por otra persona
+  if(email !== currentUser.email && users.some(u => u.email === email)){
+    return alert('El correo electrónico ya está registrado por otro usuario.');
+  }
+
+  // Actualizar datos en la lista general
+  users[index].name = name;
+  users[index].email = email;
+  saveUsers(users);
+  
+  // Actualizar sesión actual y UI
+  setCurrentUser({...currentUser, name, email, id: users[index].id});
+  if($('#profile-name')) $('#profile-name').textContent = name;
+  alert('Perfil actualizado correctamente.');
+}
+
 // ---------- EVENTOS ----------
 function setupEvents(){
-  renderProducts();
-  renderCart();
+  // Solo renderizar si existen los elementos (para evitar errores en pag perfil)
+  if($('#products')) renderProducts();
+  if($('#cart-items')) renderCart();
+  if($('#profile-name')) renderProfile(); // Lógica específica de perfil
+  
   renderAuthState();
-  $('#year').textContent = new Date().getFullYear();
+  if($('#year')) $('#year').textContent = new Date().getFullYear();
 
   document.addEventListener('click',e=>{
     if(e.target.matches('[data-id]')){
@@ -120,53 +175,161 @@ function setupEvents(){
       removeFromCart(parseInt(e.target.dataset.remove));
     }
   });
+  
+  if($('#btn-save-profile')){
+    $('#btn-save-profile').addEventListener('click', () => {
+      const name = $('#profile-name-input').value.trim();
+      const email = $('#profile-email').value.trim();
+      if(name && email) updateUserProfile(name, email);
+      else alert('Por favor completa todos los campos.');
+    });
+  }
 
-  $('#btn-cart').addEventListener('click',()=>{
-    $('#cart').classList.toggle('hidden');
-  });
+  if($('#btn-cart')){
+    $('#btn-cart').addEventListener('click',()=>{
+      $('#cart').classList.toggle('hidden');
+    });
+  }
 
-  $('#btn-products').addEventListener('click',()=>{
-    window.scrollTo({top:0,behavior:'smooth'});
-  });
+  if($('#btn-products')){
+    $('#btn-products').addEventListener('click',()=>{
+      window.scrollTo({top:0,behavior:'smooth'});
+    });
+  }
 
-  $('#close-auth').addEventListener('click',()=>$('#auth-modal').classList.add('hidden'));
-  $('#show-register').addEventListener('click',(e)=>{e.preventDefault();$('#login-form').classList.add('hidden');$('#register-form').classList.remove('hidden');});
-  $('#show-login').addEventListener('click',(e)=>{e.preventDefault();$('#login-form').classList.remove('hidden');$('#register-form').classList.add('hidden');});
+  // Helpers para errores
+  const showError = (selector, msg) => $(selector).textContent = msg;
+  const clearErrors = () => $$('.error-msg').forEach(el => el.textContent = '');
+  
+  // Helper para Spinner
+  const toggleLoading = (btn, isLoading) => {
+    if(isLoading) {
+      btn.dataset.originalText = btn.textContent;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Procesando...';
+    } else {
+      btn.disabled = false;
+      btn.textContent = btn.dataset.originalText;
+    }
+  };
+
+  const closeModal = () => {
+    $('#auth-modal').classList.add('hidden');
+    clearErrors();
+  };
+
+  if($('#close-auth')) $('#close-auth').addEventListener('click', closeModal);
+
+  // Cerrar modal al hacer clic fuera (en el fondo oscuro)
+  if($('#auth-modal')){
+    $('#auth-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'auth-modal') closeModal();
+    });
+  }
+
+  if($('#show-register')){
+    $('#show-register').addEventListener('click',(e)=>{
+      e.preventDefault(); clearErrors();
+      $('#login-form').classList.add('hidden');$('#register-form').classList.remove('hidden');
+    });
+  }
+  if($('#show-login')){
+    $('#show-login').addEventListener('click',(e)=>{
+      e.preventDefault(); clearErrors();
+      $('#login-form').classList.remove('hidden');$('#register-form').classList.add('hidden');
+    });
+  }
 
   // Register
-  $('#register-form').addEventListener('submit',e=>{
-    e.preventDefault();
-    const name = $('#reg-name').value.trim();
-    const email = $('#reg-email').value.trim();
-    const pass = $('#reg-password').value;
-    const r = registerUser(name,email,pass);
-    if(!r.ok) return alert(r.msg);
-    alert('Registro correcto. Sesión iniciada.');
-    $('#auth-modal').classList.add('hidden');
-  });
+  const regForm = $('#register-form');
+  if(regForm){
+    regForm.addEventListener('submit',e=>{
+      e.preventDefault();
+      const btn = regForm.querySelector('button[type="submit"]');
+      const name = $('#reg-name').value.trim();
+      const email = $('#reg-email').value.trim();
+      const pass = $('#reg-password').value;
+      
+      clearErrors();
+
+      // Validación de formato de email con Regex
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if(!emailRegex.test(email)) return showError('#register-error', 'Por favor, introduce un email válido.');
+
+      // Validación de longitud de contraseña
+      if(pass.length < 6) return showError('#register-error', 'La contraseña debe tener al menos 6 caracteres.');
+
+      // Activar spinner
+      toggleLoading(btn, true);
+
+      // Simular retardo de red (1.5 segundos)
+      setTimeout(() => {
+        const r = registerUser(name,email,pass);
+        toggleLoading(btn, false); // Desactivar spinner
+
+        if(!r.ok) return showError('#register-error', r.msg);
+        
+        alert('Registro correcto. Sesión iniciada.');
+        closeModal();
+        // Redirigir al perfil tras registro exitoso
+        window.location.href = '/profile';
+      }, 1500);
+    });
+  }
 
   // Login
-  $('#login-form').addEventListener('submit',e=>{
-    e.preventDefault();
-    const email = $('#login-email').value.trim();
-    const pass = $('#login-password').value;
-    const r = loginUser(email,pass);
-    if(!r.ok) return alert(r.msg);
-    alert('Bienvenida/o!');
-    $('#auth-modal').classList.add('hidden');
-  });
+  const loginForm = $('#login-form');
+  if(loginForm){
+    loginForm.addEventListener('submit',e=>{
+      e.preventDefault();
+      const btn = loginForm.querySelector('button[type="submit"]');
+      const email = $('#login-email').value.trim();
+      const pass = $('#login-password').value;
+      
+      clearErrors();
+      toggleLoading(btn, true);
+
+      setTimeout(() => {
+        const r = loginUser(email,pass);
+        toggleLoading(btn, false);
+
+        if(!r.ok) return showError('#login-error', r.msg);
+        
+        alert('Bienvenida/o!');
+        closeModal();
+        // Redirigir al perfil tras login
+        window.location.href = '/profile';
+      }, 1500);
+    });
+  }
 
   // Checkout (demo)
-  $('#checkout-btn').addEventListener('click',()=>{
-    const cart = getCart();
-    if(cart.length===0) return alert('El carrito está vacío');
-    const user = getCurrentUser();
-    if(!user) return alert('Debes iniciar sesión o registrarte para pagar.');
-    // Simular pago
-    alert(`Gracias ${user.name}, tu pedido por $${cart.reduce((s,i)=>s+i.price*i.qty,0).toFixed(2)} ha sido registrado (simulado).`);
-    saveCart([]);
-    renderCart();
-    $('#cart').classList.add('hidden');
+  if($('#checkout-btn')){
+    $('#checkout-btn').addEventListener('click',()=>{
+      const cart = getCart();
+      if(cart.length===0) return alert('El carrito está vacío');
+      const user = getCurrentUser();
+      if(!user) return alert('Debes iniciar sesión o registrarte para pagar.');
+      // Simular pago
+      alert(`Gracias ${user.name}, tu pedido por $${cart.reduce((s,i)=>s+i.price*i.qty,0).toFixed(2)} ha sido registrado (simulado).`);
+      saveCart([]);
+      renderCart();
+      $('#cart').classList.add('hidden');
+    });
+  }
+
+  // Toggle mostrar/ocultar contraseña
+  document.querySelectorAll('.toggle-password').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = btn.previousElementSibling;
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🙈'; // Icono de ocultar
+      } else {
+        input.type = 'password';
+        btn.textContent = '👁️'; // Icono de mostrar
+      }
+    });
   });
 }
 
