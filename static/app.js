@@ -1,33 +1,24 @@
 // Lógica simple de frontend: productos, carrito y auth en localStorage
 
-// Helper para generar IDs tipo MongoDB (ObjectId simulado)
-const generateObjectId = () => {
-  const timestamp = (new Date().getTime() / 1000 | 0).toString(16);
-  return timestamp + 'xxxxxxxxxxxxxxxx'.replace(/[x]/g, () => (Math.random() * 16 | 0).toString(16)).toLowerCase();
-};
+// Cache de productos en memoria
+let PRODUCTS_CACHE = [];
+let CURRENT_PAGE = 1;
+let TOTAL_PAGES = 1;
 
-const DEFAULT_PRODUCTS = [
-  {_id:'65d4f1a1e1b2c3d4e5f6a001',name:'Compresas Suaves',price:1000,desc:'Paquete de 20 compresas ultra suaves.',image:'https://images.unsplash.com/photo-1592928306923-7a1b9b2fec1b?auto=format&fit=crop&w=800&q=60'},
-  {_id:'65d4f1a1e1b2c3d4e5f6a002',name:'Protectores Diarios',price:1000,desc:'Protectores discretos para el día a día.',image:'https://images.unsplash.com/photo-1542831371-d531d36971e6?auto=format&fit=crop&w=800&q=60'},
-  {_id:'65d4f1a1e1b2c3d4e5f6a003',name:'Copas Menstruales',price:1000,desc:'Reutilizable, ecológica y cómoda.',image:'https://images.unsplash.com/photo-1603575448362-7b6d2d7f9d76?auto=format&fit=crop&w=800&q=60'},
-  {_id:'65d4f1a1e1b2c3d4e5f6a004',name:'Toallitas Íntimas',price:1000,desc:'Frescor y cuidado íntimo.',image:'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=800&q=60'}
-];
+// Variables para el temporizador de sesión
+let sessionWarningTimer;
+let sessionLogoutTimer;
+const SESSION_LIFETIME = 30 * 60 * 1000; // 30 minutos
+const WARNING_TIME = 28 * 60 * 1000;     // Avisar a los 28 minutos
 
-// Cargar productos de localStorage o usar los por defecto
-function getProductsData() {
-  const stored = localStorage.getItem('products');
-  if (stored) {
-    const data = JSON.parse(stored);
-    // Migración: Si los datos viejos no tienen _id, reseteamos para evitar errores
-    if(data.length > 0 && !data[0]._id) {
-      localStorage.setItem('products', JSON.stringify(DEFAULT_PRODUCTS));
-      return DEFAULT_PRODUCTS;
-    }
+async function fetchProducts(page = 1) {
+  try {
+    const res = await fetch(`/api/products?page=${page}&limit=3`);
+    const data = await res.json();
+    PRODUCTS_CACHE = data.products; // Actualizamos cache solo con los visibles
+    TOTAL_PAGES = data.pages;
     return data;
-  }
-  // Si es la primera vez, guardamos los default
-  localStorage.setItem('products', JSON.stringify(DEFAULT_PRODUCTS));
-  return DEFAULT_PRODUCTS;
+  } catch (e) { console.error(e); return { products: [] }; }
 }
 
 // ---------- UTILIDADES ----------
@@ -38,11 +29,13 @@ const formatCurrency = (amount) => {
 };
 
 // ---------- RENDER ----------
-function renderProducts(){
+async function renderProducts(){
   const container = $('#products');
+  if(!container) return;
+  container.innerHTML='<p class="center">Cargando productos...</p>';
+  await fetchProducts(CURRENT_PAGE); // Cargar página actual
   container.innerHTML='';
-  const products = getProductsData();
-  products.forEach(p=>{
+  PRODUCTS_CACHE.forEach(p=>{
     const card = document.createElement('article');
     card.className='product-card';
     card.innerHTML = `
@@ -55,6 +48,35 @@ function renderProducts(){
       </div>`;
     container.appendChild(card);
   });
+  renderPaginationControls();
+}
+
+function renderPaginationControls() {
+  // Buscar o crear contenedor de paginación
+  let paginationDiv = $('#pagination-controls');
+  if (!paginationDiv) {
+    paginationDiv = document.createElement('div');
+    paginationDiv.id = 'pagination-controls';
+    paginationDiv.className = 'center';
+    paginationDiv.style.marginTop = '20px';
+    paginationDiv.style.paddingBottom = '20px';
+    // Insertar después de la sección de productos
+    const productsSection = $('#products');
+    productsSection.parentNode.insertBefore(paginationDiv, productsSection.nextSibling);
+  }
+
+  paginationDiv.innerHTML = `
+    <button class="btn" id="prev-page" ${CURRENT_PAGE === 1 ? 'disabled' : ''} style="margin-right:10px;">Anterior</button>
+    <span>Página ${CURRENT_PAGE} de ${TOTAL_PAGES}</span>
+    <button class="btn" id="next-page" ${CURRENT_PAGE >= TOTAL_PAGES ? 'disabled' : ''} style="margin-left:10px;">Siguiente</button>
+  `;
+
+  $('#prev-page').onclick = () => {
+    if (CURRENT_PAGE > 1) { CURRENT_PAGE--; renderProducts(); }
+  };
+  $('#next-page').onclick = () => {
+    if (CURRENT_PAGE < TOTAL_PAGES) { CURRENT_PAGE++; renderProducts(); }
+  };
 }
 
 // ---------- CARRITO ----------
@@ -65,8 +87,7 @@ function saveCart(items){
   localStorage.setItem('cart',JSON.stringify(items));
 }
 function addToCart(id){
-  const products = getProductsData();
-  const product = products.find(p=>p._id===id);
+  const product = PRODUCTS_CACHE.find(p=>p._id===id);
   if(!product) return;
   const cart = getCart();
   const item = cart.find(i=>i._id===id);
@@ -97,46 +118,88 @@ function renderCart(){
 }
 
 // ---------- AUTH (demo localStorage) ----------
-async function hashPassword(str) {
-  const msgBuffer = new TextEncoder().encode(str);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+async function initAuth(){
+  // Verificar si la sesión del servidor sigue activa (por si se reinició la app)
+  try {
+    const res = await fetch('/api/session');
+    const data = await res.json();
+    if(!data.ok){
+      localStorage.removeItem('currentUser');
+      renderAuthState(); // Actualizar UI para mostrar "Iniciar sesión"
+    } else {
+      startSessionTimers(); // La sesión es válida, iniciar conteo
+    }
+  } catch(e) {}
 }
 
-function getUsers(){
-  return JSON.parse(localStorage.getItem('users')||'[]');
-}
-async function initAuth(){
-  // Solo crea el admin si NO existe la clave 'users' (primera vez que se entra a la web)
-  if(localStorage.getItem('users') === null){
-    const hashedPassword = await hashPassword('admin');
-    const defaultUsers = [{_id:generateObjectId(), name:'Administrador', email:'admin@bloomcare.com', password:hashedPassword}];
-    localStorage.setItem('users',JSON.stringify(defaultUsers));
+async function registerUser(name,email,password){
+  try {
+    const response = await fetch('/registro', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    });
+    const data = await response.json();
+    if(data.ok){
+      // Auto-login tras registro exitoso (opcional, aquí solo guardamos sesión frontend)
+      setCurrentUser({name, email}); 
+    }
+    return data;
+  } catch (error) {
+    console.error(error);
+    return {ok:false, msg: 'Error de conexión con el servidor'};
   }
 }
-function saveUsers(u){ localStorage.setItem('users',JSON.stringify(u)); }
-async function registerUser(name,email,password){
-  if(email === 'admin@bloomcare.com') return {ok:false,msg:'No se permite registrar cuenta de administrador.'};
-  const users = getUsers();
-  if(users.find(x=>x.email===email)) return {ok:false,msg:'Ya existe una cuenta con ese email'};
-  const hashedPassword = await hashPassword(password);
-  users.push({_id:generateObjectId(),name,email,password:hashedPassword});
-  saveUsers(users);
-  setCurrentUser({name,email});
-  return {ok:true};
-}
+
 async function loginUser(email,password){
-  const users = getUsers();
-  const hashedPassword = await hashPassword(password);
-  const user = users.find(u=>u.email===email && u.password===hashedPassword);
-  if(!user) return {ok:false,msg:'Credenciales inválidas'};
-  setCurrentUser({name:user.name,email:user.email});
-  return {ok:true};
+  try {
+    const response = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await response.json();
+    if(data.ok) {
+      setCurrentUser(data.user);
+      startSessionTimers(); // Iniciar conteo al entrar
+    }
+    return data;
+  } catch (error) {
+    return {ok:false, msg: 'Error de conexión'};
+  }
 }
 function setCurrentUser(u){ localStorage.setItem('currentUser',JSON.stringify(u)); renderAuthState(); }
 function getCurrentUser(){ return JSON.parse(localStorage.getItem('currentUser')||'null'); }
-function logout(){ localStorage.removeItem('currentUser'); renderAuthState(); }
+async function logout(){ 
+  clearSessionTimers(); // Detener conteo al salir
+  try { await fetch('/logout'); } catch(e){} // Avisar al servidor
+  localStorage.removeItem('currentUser'); 
+  renderAuthState(); 
+}
+
+// ---------- GESTIÓN DE TIEMPO DE SESIÓN ----------
+function startSessionTimers() {
+  clearSessionTimers();
+  // 1. Temporizador para mostrar la advertencia (a los 28 min)
+  sessionWarningTimer = setTimeout(() => {
+    const modal = $('#session-warning-modal');
+    if(modal) modal.classList.remove('hidden');
+  }, WARNING_TIME);
+
+  // 2. Temporizador para cerrar forzosamente (a los 30 min)
+  sessionLogoutTimer = setTimeout(() => {
+    const modal = $('#session-warning-modal');
+    if(modal) modal.classList.add('hidden');
+    logout();
+    alert('Tu sesión ha expirado por inactividad.');
+    window.location.href = '/';
+  }, SESSION_LIFETIME);
+}
+
+function clearSessionTimers() {
+  if (sessionWarningTimer) clearTimeout(sessionWarningTimer);
+  if (sessionLogoutTimer) clearTimeout(sessionLogoutTimer);
+}
 
 function renderAuthState(){
   const user = getCurrentUser();
@@ -153,10 +216,18 @@ function renderAuthState(){
       // En lugar de alert, vamos al perfil
       window.location.href = '/profile';
     }
-    // Si es admin, agregar botón de panel
-    if(user.email === 'admin@bloomcare.com') {
-      const nav = $('nav');
-      nav.insertAdjacentHTML('afterbegin', '<a href="/admin" id="btn-admin-panel" class="nav-btn" style="text-decoration:none; color:inherit; border-color: var(--color-accent); color: var(--color-accent);">Panel Admin</a>');
+    // Si es admin (por email o rol), agregar botón de panel
+    if(user.email === 'admin@bloomcare.com' || user.rol === 'admin') {
+      const adminLink = document.createElement('a');
+      adminLink.id = 'btn-admin-panel';
+      adminLink.href = '/admin';
+      adminLink.className = 'nav-btn';
+      adminLink.textContent = 'Panel Admin';
+      // Estilos inline para destacar
+      adminLink.style.cssText = 'text-decoration:none; color:var(--color-accent); border-color:var(--color-accent); margin-right: 8px;';
+      
+      // Insertar antes del botón de perfil para que quede ordenado
+      btn.parentNode.insertBefore(adminLink, btn);
     }
   } else {
     btn.textContent = 'Iniciar sesión / Registro';
@@ -178,46 +249,49 @@ function renderProfile(){
   if($('#profile-id')) $('#profile-id').value = user._id || 'N/A';
   
   if($('#btn-logout-profile')){
-    $('#btn-logout-profile').addEventListener('click', ()=>{
-      if(confirm('¿Seguro que quieres salir?')){
-        logout();
-        window.location.href = '/';
-      }
+    $('#btn-logout-profile').addEventListener('click', async ()=>{
+      // Sin confirmación (cuadrado), cierre directo
+      await logout();
+      window.location.href = '/';
     });
   }
 }
 
-function updateUserProfile(name, email){
-  const currentUser = getCurrentUser();
-  if(!currentUser) return;
+async function updateUserProfile(name, email){
+  const user = getCurrentUser();
+  if(!user) return;
+  const msgEl = $('#profile-msg');
+  msgEl.textContent = 'Guardando...';
+  msgEl.style.color = 'var(--color-muted)';
 
-  const users = getUsers();
-  // Buscar al usuario en la lista por su email actual
-  const index = users.findIndex(u => u.email === currentUser.email);
-  
-  if(index === -1) return alert('Error: Usuario no encontrado.');
-
-  // Verificar si el nuevo email ya está en uso por otra persona
-  if(email !== currentUser.email && users.some(u => u.email === email)){
-    return alert('El correo electrónico ya está registrado por otro usuario.');
+  try {
+    const res = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ _id: user._id, name, email })
+    });
+    const data = await res.json();
+    if(data.ok) {
+      msgEl.textContent = '¡Cambios guardados!';
+      msgEl.style.color = 'green';
+      // Actualizar sesión local
+      setCurrentUser({...user, name, email});
+      if($('#profile-name')) $('#profile-name').textContent = name;
+    } else {
+      msgEl.textContent = data.msg || 'Error al guardar';
+      msgEl.style.color = 'red';
+    }
+  } catch (e) {
+    msgEl.textContent = 'Error de conexión';
+    msgEl.style.color = 'red';
   }
-
-  // Actualizar datos en la lista general
-  users[index].name = name;
-  users[index].email = email;
-  saveUsers(users);
-  
-  // Actualizar sesión actual y UI
-  setCurrentUser({...currentUser, name, email, _id: users[index]._id});
-  if($('#profile-name')) $('#profile-name').textContent = name;
-  alert('Perfil actualizado correctamente.');
 }
 
 // ---------- ADMIN ----------
 function renderAdminPanel() {
   const user = getCurrentUser();
   // Protección simple de ruta
-  if(!user || user.email !== 'admin@bloomcare.com') {
+  if(!user || (user.email !== 'admin@bloomcare.com' && user.rol !== 'admin')) {
     alert('Acceso denegado. Debes ser administrador.');
     window.location.href = '/';
     return;
@@ -234,14 +308,117 @@ function renderAdminPanel() {
 
       if(!name || !desc || isNaN(price) || !image) return alert('Todos los campos son obligatorios');
 
-      const products = getProductsData();
-      const newId = generateObjectId(); // Generar ID estilo Mongo
-      
-      products.push({ _id: newId, name, price, desc, image });
-      localStorage.setItem('products', JSON.stringify(products));
+      // Aquí deberías agregar una ruta POST /api/products en Flask para guardar en Mongo
+      // Por ahora, solo alerta visual ya que pediste centrarte en perfil/logout
+      // products.push({ _id: newId, name, price, desc, image });
+      // localStorage.setItem('products', JSON.stringify(products));
       
       alert('Producto agregado correctamente');
       form.reset();
+    });
+  }
+
+  // Función para cargar lista de admins
+  const loadAdmins = async () => {
+    const list = $('#admin-list');
+    if(!list) return;
+    list.innerHTML = '<p class="center small muted">Cargando...</p>';
+    
+    try {
+      const res = await fetch('/api/admin/users');
+      const data = await res.json();
+      
+      if(data.ok) {
+        list.innerHTML = '';
+        if(data.admins.length === 0) {
+          list.innerHTML = '<p class="center small muted">No se encontraron administradores.</p>';
+          return;
+        }
+        
+        const currentUser = getCurrentUser();
+
+        data.admins.forEach(admin => {
+          const li = document.createElement('li');
+          li.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding: 10px 0; border-bottom: 1px solid #f0f0f0;';
+          
+          // Verificar si es el usuario actual para no mostrar botón de borrar
+          const isMe = currentUser && currentUser._id === admin._id;
+          
+          li.innerHTML = `
+            <div style="overflow: hidden;">
+              <strong style="display:block; font-size: 0.95rem;">${admin.nombre}</strong>
+              <span class="muted small" style="display:block; text-overflow: ellipsis; overflow: hidden;">${admin.email}</span>
+            </div>
+            ${!isMe ? 
+              `<button class="btn" style="background:#ff4444; color:white; border:none; padding: 4px 8px; font-size: 0.8rem; margin-left: 10px;" data-delete-admin="${admin._id}">Eliminar</button>` 
+              : '<span class="small muted" style="margin-left: 10px;">(Tú)</span>'}
+          `;
+          list.appendChild(li);
+        });
+      }
+    } catch(e) {
+      console.error(e);
+      list.innerHTML = '<p class="error-msg small">Error al cargar lista.</p>';
+    }
+  };
+
+  // Cargar lista inicial
+  loadAdmins();
+
+  // Evento delegado para eliminar admins
+  const adminListEl = $('#admin-list');
+  if(adminListEl) {
+    adminListEl.addEventListener('click', async (e) => {
+      if(e.target.matches('[data-delete-admin]')) {
+        const id = e.target.dataset.deleteAdmin;
+        if(confirm('¿Estás seguro de que deseas eliminar a este administrador? Esta acción no se puede deshacer.')) {
+          try {
+            const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if(data.ok) {
+              alert('Administrador eliminado correctamente.');
+              loadAdmins(); // Recargar lista
+            } else {
+              alert(data.msg || 'Error al eliminar.');
+            }
+          } catch(err) {
+            alert('Error de conexión.');
+          }
+        }
+      }
+    });
+  }
+
+  // Lógica para crear nuevo admin
+  const createAdminForm = $('#create-admin-form');
+  if(createAdminForm) {
+    createAdminForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = $('#admin-name').value.trim();
+      const email = $('#admin-email').value.trim();
+      const password = $('#admin-password').value;
+
+      if(!name || !email || !password) return alert('Todos los campos son obligatorios');
+      if(password.length < 6) return alert('La contraseña debe tener al menos 6 caracteres');
+
+      try {
+        const res = await fetch('/api/admin/create-admin', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ name, email, password })
+        });
+        const data = await res.json();
+        if(data.ok) {
+          alert('Nuevo administrador creado exitosamente.');
+          createAdminForm.reset();
+          loadAdmins(); // Recargar lista para ver el nuevo admin
+        } else {
+          alert(data.msg || 'Error al crear administrador.');
+        }
+      } catch(e) {
+        console.error(e);
+        alert('Error de conexión.');
+      }
     });
   }
 }
@@ -256,6 +433,24 @@ function setupEvents(){
   if($('#admin-product-form')) renderAdminPanel(); // Lógica específica de admin
   
   renderAuthState();
+  
+  // Eventos del modal de sesión
+  if($('#btn-extend-session')){
+    $('#btn-extend-session').addEventListener('click', async () => {
+      // Llamar al backend para renovar la cookie de sesión
+      try { await fetch('/api/session'); } catch(e){}
+      $('#session-warning-modal').classList.add('hidden');
+      startSessionTimers(); // Reiniciar el reloj
+    });
+  }
+  if($('#btn-logout-session')){
+    $('#btn-logout-session').addEventListener('click', async () => {
+      $('#session-warning-modal').classList.add('hidden');
+      await logout();
+      window.location.href = '/';
+    });
+  }
+
   if($('#year')) $('#year').textContent = new Date().getFullYear();
 
   document.addEventListener('click',e=>{
@@ -289,7 +484,11 @@ function setupEvents(){
   }
 
   // Helpers para errores
-  const showError = (selector, msg) => $(selector).textContent = msg;
+  const showError = (selector, msg) => {
+    const el = $(selector);
+    if(el) el.textContent = msg;
+    else alert(msg); // Fallback: si no existe el elemento visual, usa alerta
+  };
   const clearErrors = () => $$('.error-msg').forEach(el => el.textContent = '');
   
   // Helper para Spinner
@@ -362,8 +561,8 @@ function setupEvents(){
         
         alert('Registro correcto. Sesión iniciada.');
         closeModal();
-        // Redirigir al perfil tras registro exitoso
-        window.location.href = '/profile';
+        // Redirigir al inicio tras registro exitoso
+        window.location.href = '/';
       }, 1500);
     });
   }
@@ -388,8 +587,8 @@ function setupEvents(){
         
         alert('Bienvenida/o!');
         closeModal();
-        // Redirigir al perfil tras login
-        window.location.href = '/profile';
+        // Redirigir al inicio tras login
+        window.location.href = '/';
       }, 1500);
     });
   }

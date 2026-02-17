@@ -1,19 +1,19 @@
-from pymongo import MongoClient
-import os
 
-# Configuración de conexión a MongoDB
-# Puedes cambiar 'localhost' por la URL de MongoDB Atlas si lo subes a la nube
-MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/bloomcare')
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
+
+uri = "mongodb+srv://admin:DoDrD71Kh8RZCOX2@clusterbloomcare.gyeiata.mongodb.net/?appName=ClusterBloomCare"
+
+# Create a new client and connect to the server
+client = MongoClient(uri, server_api=ServerApi('1'))
 
 def get_db():
-    """
-    Establece la conexión y retorna la instancia de la base de datos.
-    """
-    client = MongoClient(MONGO_URI)
-    db = client.get_database()
-    return db
+    # Retorna la base de datos 'bloomcare'
+    return client.bloomcare
 
-# Bloque de prueba para verificar conexión al ejecutar este archivo
-if __name__ == "__main__":
-    db = get_db()
-    print(f"Conectado exitosamente a la base de datos: {db.name}")
+# Send a ping to confirm a successful connection
+try:
+    client.admin.command('ping')
+    print("Pinged your deployment. You successfully connected to MongoDB!")
+except Exception as e:
+    print(e)

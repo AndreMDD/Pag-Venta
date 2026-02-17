@@ -12,7 +12,7 @@
         <a href="/" style="text-decoration:none;"><h1 class="logo">BloomCare</h1></a>
         <nav>
           <a href="/" class="nav-btn" style="text-decoration:none; color:inherit;">Volver a la tienda</a>
-          <button id="btn-auth" class="nav-btn">Cerrar Sesión</button>
+          <button id="btn-logout-profile" class="nav-btn">Cerrar Sesión</button>
         </nav>
       </div>
     </header>
@@ -22,33 +22,39 @@
         <div class="profile-header">
           <div class="avatar-placeholder">👤</div>
           <h2 id="profile-name">Cargando...</h2>
+          <p class="muted">Gestiona tus datos personales</p>
         </div>
         
         <div class="profile-body">
+          <div class="info-group hidden">
+            <label>ID de Usuario</label>
+            <input type="text" id="profile-id" readonly disabled style="background: #f0f0f0; color: #666;">
+          </div>
+
           <div class="info-group">
-            <label>Nombre</label>
-            <input type="text" id="profile-name-input" value="...">
+            <label>Nombre Completo</label>
+            <input type="text" id="profile-name-input" placeholder="Tu nombre">
           </div>
 
           <div class="info-group">
             <label>Correo Electrónico</label>
-            <input type="email" id="profile-email" value="...">
-          </div>
-          
-          <div class="info-group">
-            <label>ID de Usuario</label>
-            <input type="text" id="profile-id" readonly value="...">
+            <input type="email" id="profile-email" placeholder="tucorreo@ejemplo.com">
           </div>
 
           <div class="profile-actions">
-            <button id="btn-save-profile" class="btn primary" style="margin-right: 10px;">Guardar Cambios</button>
-            <button id="btn-logout-profile" class="btn primary" style="background-color: #666;">Cerrar Sesión</button>
+            <button id="btn-save-profile" class="btn primary" style="width: 100%;">Guardar Cambios</button>
+            <p id="profile-msg" class="center" style="margin-top:10px; min-height: 20px; font-weight: 500;"></p>
           </div>
         </div>
       </div>
     </main>
 
-    <!-- Reutilizamos app.js para la lógica de usuario -->
+    <footer class="site-footer">
+      <div class="container">
+        <p>© BloomCare</p>
+      </div>
+    </footer>
+
     <script src="{{ url_for('static', filename='app.js') }}"></script>
   </body>
 </html>

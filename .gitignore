@@ -5,3 +5,5 @@ __pycache__/
 .vscode/
 .DS_Store
 arreglar_carpetas.py
+.venv/
+database.py
