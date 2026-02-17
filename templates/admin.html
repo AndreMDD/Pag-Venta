@@ -101,6 +101,18 @@
       </div>
     </main>
 
+    <!-- Modal de Confirmación de Eliminación -->
+    <div id="delete-product-modal" class="modal hidden">
+      <div class="modal-content" style="text-align: center;">
+        <h3 style="color: var(--color-accent);">Confirmar Eliminación</h3>
+        <p>¿Estás seguro de que deseas eliminar <strong id="delete-product-name">este producto</strong>? Esta acción no se puede deshacer.</p>
+        <div style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;">
+          <button id="btn-cancel-delete" class="btn">Cancelar</button>
+          <button id="btn-confirm-delete" class="btn primary" style="background-color: #ff4444;">Eliminar</button>
+        </div>
+      </div>
+    </div>
+
     <script src="{{ url_for('static', filename='app.js') }}"></script>
   </body>
 </html>

@@ -44,6 +44,29 @@ const toggleLoading = (btn, isLoading) => {
   }
 };
 
+// Helper para Toast (Notificación temporal) - Global
+const showToast = (msg) => {
+  let toast = $('#toast-notification');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast-notification';
+    toast.className = 'toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add('show');
+
+  const hide = () => {
+    toast.classList.remove('show');
+    document.removeEventListener('click', hide);
+  };
+
+  // Auto ocultar a los 2 segundos
+  setTimeout(hide, 2000);
+  // Ocultar al hacer clic en cualquier parte (con ligero delay para no capturar el clic actual)
+  setTimeout(() => document.addEventListener('click', hide), 100);
+};
+
 // ---------- RENDER ----------
 async function renderProducts(){
   const container = $('#products');
@@ -384,6 +407,7 @@ function renderAdminPanel() {
 
   let editingId = null;
   let adminProductsCache = [];
+  let productToDeleteId = null; // Variable para almacenar ID temporalmente
 
   // Función para cargar lista de productos en admin
   const loadAdminProducts = async () => {
@@ -451,21 +475,46 @@ function renderAdminPanel() {
 
       // --- ELIMINAR ---
       if(e.target.matches('[data-delete-product]')) {
-        const id = e.target.dataset.deleteProduct;
-        if(confirm('¿Estás seguro de eliminar este producto?')) {
-          try {
-            const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
-            const data = await res.json();
-            if(data.ok) {
-              alert('Producto eliminado');
-              loadAdminProducts(); // Recargar lista
-            } else {
-              alert(data.msg || 'Error al eliminar');
-            }
-          } catch(e) { alert('Error de conexión'); }
+        productToDeleteId = e.target.dataset.deleteProduct;
+        const product = adminProductsCache.find(p => p._id === productToDeleteId);
+        if(product) {
+          const nameEl = $('#delete-product-name');
+          if(nameEl) nameEl.textContent = `"${product.name}"`;
         }
+        const deleteModal = $('#delete-product-modal');
+        if(deleteModal) deleteModal.classList.remove('hidden');
       }
     });
+  }
+
+  // Lógica del Modal de Eliminación
+  const deleteModal = $('#delete-product-modal');
+  if(deleteModal) {
+    // Confirmar
+    $('#btn-confirm-delete').addEventListener('click', async () => {
+      if(!productToDeleteId) return;
+      try {
+        const res = await fetch(`/api/products/${productToDeleteId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if(data.ok) {
+          showToast('Producto eliminado correctamente');
+          loadAdminProducts(); 
+        } else {
+          alert(data.msg || 'Error al eliminar');
+        }
+      } catch(e) { alert('Error de conexión'); }
+      
+      deleteModal.classList.add('hidden');
+      productToDeleteId = null;
+    });
+
+    // Cancelar / Cerrar
+    const closeDeleteModal = () => {
+      deleteModal.classList.add('hidden');
+      productToDeleteId = null;
+    };
+    $('#btn-cancel-delete').addEventListener('click', closeDeleteModal);
+    deleteModal.addEventListener('click', (e) => { if(e.target === deleteModal) closeDeleteModal(); });
   }
 
   // Cargar productos al entrar
@@ -495,6 +544,7 @@ function renderAdminPanel() {
       
       // Validación: Imagen obligatoria solo si NO estamos editando
       if(!name || !desc || isNaN(price)) return alert('Faltan campos de texto');
+      if(price < 0) return alert('El precio no puede ser negativo');
       if(!editingId && !imageFile) return alert('La imagen es obligatoria para nuevos productos');
 
       toggleLoading(btn, true);
@@ -776,29 +826,6 @@ function setupEvents(){
     const el = $(selector);
     if(el) el.textContent = msg;
     else alert(msg); // Fallback: si no existe el elemento visual, usa alerta
-  };
-
-  // Helper para Toast (Notificación temporal)
-  const showToast = (msg) => {
-    let toast = $('#toast-notification');
-    if (!toast) {
-      toast = document.createElement('div');
-      toast.id = 'toast-notification';
-      toast.className = 'toast';
-      document.body.appendChild(toast);
-    }
-    toast.textContent = msg;
-    toast.classList.add('show');
-
-    const hide = () => {
-      toast.classList.remove('show');
-      document.removeEventListener('click', hide);
-    };
-
-    // Auto ocultar a los 2 segundos
-    setTimeout(hide, 2000);
-    // Ocultar al hacer clic en cualquier parte (con ligero delay para no capturar el clic actual)
-    setTimeout(() => document.addEventListener('click', hide), 100);
   };
 
   // Verificar si hay un mensaje pendiente (ej. tras logout)
