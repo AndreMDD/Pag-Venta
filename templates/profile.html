@@ -31,27 +31,78 @@
             <input type="text" id="profile-id" readonly disabled style="background: #f0f0f0; color: #666;">
           </div>
 
+          <!-- Datos Personales -->
           <div class="info-group">
             <label>Nombre Completo</label>
-            <input type="text" id="profile-name-input" placeholder="Tu nombre">
+            <div class="input-with-icon">
+              <input type="text" id="profile-name-input" placeholder="Tu nombre" disabled>
+              <button class="icon-btn edit-field" title="Editar nombre">✏️</button>
+            </div>
           </div>
 
           <div class="info-group">
             <label>Correo Electrónico</label>
-            <input type="email" id="profile-email" placeholder="tucorreo@ejemplo.com">
+            <div class="input-with-icon">
+              <input type="email" id="profile-email" placeholder="tucorreo@ejemplo.com" disabled>
+              <button class="icon-btn edit-field" title="Editar correo">✏️</button>
+            </div>
+          </div>
+
+          <!-- Seguridad (Contraseña) -->
+          <div class="info-group" style="margin-top: 20px;">
+            <label>Seguridad</label>
+            <button id="btn-change-pass" class="btn outline full-width" style="justify-content: space-between; display: flex; align-items: center;">
+              <span>Cambiar Contraseña</span>
+              <span>🔒</span>
+            </button>
           </div>
 
           <div class="profile-actions">
-            <button id="btn-save-profile" class="btn primary" style="width: 100%;">Guardar Cambios</button>
+            <button id="btn-save-profile" class="btn primary" style="width: 100%;" disabled>Guardar Cambios</button>
             <p id="profile-msg" class="center" style="margin-top:10px; min-height: 20px; font-weight: 500;"></p>
           </div>
+        </div>
+
+        <!-- Sección de Métodos de Pago -->
+        <div class="profile-footer-section" style="border-top: 1px solid #eee; padding: 20px;">
+          <h3 style="font-size: 1rem; margin-top: 0;">Métodos de Pago</h3>
+          <div class="payment-placeholder" style="margin-bottom: 15px; color: #666; font-size: 0.9rem;">
+            No tienes tarjetas guardadas.
+          </div>
+          <button id="btn-add-payment" class="btn secondary full-width" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <span>💳</span> Agregar Método de Pago
+          </button>
         </div>
       </div>
     </main>
 
     <footer class="site-footer">
       <div class="container">
-        <p>© BloomCare</p>
+        <div class="footer-content">
+          <div class="footer-section">
+            <h4>Sobre BloomCare</h4>
+            <p class="muted">Dedicados al bienestar y salud femenina con productos ecológicos, seguros y pensados para tu comodidad.</p>
+          </div>
+          <div class="footer-section">
+            <h4>Enlaces Rápidos</h4>
+            <ul class="footer-links">
+              <li><a href="/">Inicio</a></li>
+              <li><a href="/#products">Productos</a></li>
+              <li><a href="/profile">Mi Cuenta</a></li>
+            </ul>
+          </div>
+          <div class="footer-section">
+            <h4>Síguenos</h4>
+            <div class="social-links">
+              <a href="#" target="_blank">Instagram</a>
+              <a href="#" target="_blank">Facebook</a>
+              <a href="#" target="_blank">Twitter</a>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>© <span id="year"></span> BloomCare</p>
+        </div>
       </div>
     </footer>
 

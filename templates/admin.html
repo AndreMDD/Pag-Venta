@@ -12,7 +12,7 @@
         <a href="/" style="text-decoration:none;"><h1 class="logo">BloomCare</h1></a>
         <nav>
           <a href="/" class="nav-btn" style="text-decoration:none; color:inherit;">Volver a la tienda</a>
-          <button id="btn-auth" class="nav-btn">Cerrar Sesión</button>
+          <button id="btn-logout-admin" class="nav-btn">Cerrar Sesión</button>
         </nav>
       </div>
     </header>
@@ -33,8 +33,8 @@
             </div>
 
             <div class="info-group">
-              <label>URL de la Imagen</label>
-              <input type="url" id="prod-image" placeholder="https://..." required>
+              <label>Imagen del Producto</label>
+              <input type="file" id="prod-image" accept="image/*" required>
             </div>
 
             <div class="info-group">
@@ -47,10 +47,23 @@
               <input type="number" id="prod-price" step="1" min="0" placeholder="1000" required>
             </div>
 
-            <div class="profile-actions">
-              <button type="submit" class="btn primary" style="width: 100%;">Guardar Producto</button>
+            <div class="profile-actions" style="display: flex; gap: 10px;">
+              <button type="submit" id="btn-submit-prod" class="btn primary" style="flex: 1;">Guardar Producto</button>
+              <button type="button" id="btn-cancel-edit" class="btn secondary hidden" style="flex: 1;">Cancelar</button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Sección para listar productos -->
+      <div class="profile-card" style="margin-top: 30px;">
+        <div class="profile-header">
+          <div class="avatar-placeholder">📦</div>
+          <h2>Productos Existentes</h2>
+          <p class="muted">Gestionar catálogo</p>
+        </div>
+        <div class="profile-body">
+          <ul id="admin-products-list" style="list-style: none; padding: 0;"></ul>
         </div>
       </div>
 

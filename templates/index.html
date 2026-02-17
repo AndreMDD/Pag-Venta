@@ -10,6 +10,9 @@
     <header class="site-header">
       <div class="container header-inner">
         <h1 class="logo">BloomCare</h1>
+        <div class="search-bar">
+          <input type="text" id="search-input" placeholder="Buscar productos...">
+        </div>
         <nav>
           <button id="btn-products" class="nav-btn">Productos</button>
           <button id="btn-cart" class="nav-btn">Carrito (<span id="cart-count">0</span>)</button>
@@ -32,7 +35,7 @@
         <h3>Tu carrito</h3>
         <ul id="cart-items"></ul>
         <div class="cart-footer">
-          <strong>Total: $<span id="cart-total">0.00</span></strong>
+          <strong>Total: <span id="cart-total">0.00</span></strong>
           <button id="checkout-btn" class="primary">Pagar</button>
         </div>
       </aside>
@@ -45,13 +48,12 @@
         <div class="auth-forms">
           <form id="login-form" class="auth-form">
             <h3>Iniciar sesión</h3>
-            <label>Email<input type="email" id="login-email" required></label>
-            <label>Contraseña
-              <div class="password-wrapper">
-                <input type="password" id="login-password" required minlength="6">
-                <span class="toggle-password">👁️</span>
-              </div>
-            </label>
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required>
+            
+            <label for="login-password">Contraseña</label>
+            <input type="password" id="login-password" required minlength="6">
+            
             <div id="login-error" class="error-msg"></div>
             <button type="submit" class="primary">Entrar</button>
             <p class="muted">¿No tienes cuenta? <a href="#" id="show-register">Regístrate</a></p>
@@ -59,16 +61,21 @@
 
           <form id="register-form" class="auth-form hidden">
             <h3>Registro</h3>
-            <label>Nombre<input type="text" id="reg-name" required></label>
-            <label>Email<input type="email" id="reg-email" required></label>
-            <label>Contraseña
-              <div class="password-wrapper">
-                <input type="password" id="reg-password" required minlength="6">
-                <span class="toggle-password">👁️</span>
-              </div>
-            </label>
+            <label for="reg-name">Nombre</label>
+            <input type="text" id="reg-name" required>
+            
+            <label for="reg-email">Email</label>
+            <input type="email" id="reg-email" required>
+            
+            <label for="reg-password">Contraseña</label>
+            <input type="password" id="reg-password" required minlength="6">
+            <div id="password-strength" class="strength-text"></div>
+            
+            <label for="reg-password-confirm">Confirmar Contraseña</label>
+            <input type="password" id="reg-password-confirm" required minlength="6">
+            
             <div id="register-error" class="error-msg"></div>
-            <button type="submit" class="primary">Crear cuenta</button>
+            <button type="submit" class="primary" disabled id="btn-register-submit">Crear cuenta</button>
             <p class="muted">¿Ya tienes cuenta? <a href="#" id="show-login">Inicia sesión</a></p>
           </form>
         </div>
@@ -89,8 +96,32 @@
 
     <footer class="site-footer">
       <div class="container">
-        <p>© <span id="year"></span> BloomCare — Productos femeninos</p>
-        <p class="muted">Sitio de demostración. Para un lanzamiento real, se recomienda integrar un back-end seguro y pasarelas de pago.</p>
+        <div class="footer-content">
+          <div class="footer-section">
+            <h4>Sobre BloomCare</h4>
+            <p class="muted">Dedicados al bienestar y salud femenina con productos ecológicos, seguros y pensados para tu comodidad.</p>
+          </div>
+          <div class="footer-section">
+            <h4>Enlaces Rápidos</h4>
+            <ul class="footer-links">
+              <li><a href="/">Inicio</a></li>
+              <li><a href="/#products">Productos</a></li>
+              <li><a href="/profile">Mi Cuenta</a></li>
+            </ul>
+          </div>
+          <div class="footer-section">
+            <h4>Síguenos</h4>
+            <div class="social-links">
+              <a href="#" target="_blank">Instagram</a>
+              <a href="#" target="_blank">Facebook</a>
+              <a href="#" target="_blank">Twitter</a>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>© <span id="year"></span> BloomCare — Productos femeninos</p>
+          <p class="small muted">Sitio de demostración.</p>
+        </div>
       </div>
     </footer>
 

@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template, jsonify, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from database import get_db
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
@@ -9,6 +10,15 @@ import os
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Clave aleatoria: invalida sesiones al reiniciar la app
 app.permanent_session_lifetime = timedelta(minutes=30) # La sesión expira tras 30 min de inactividad
+
+# Configuración de subida de imágenes
+app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Ruta principal para cargar la aplicación (index.html)
 @app.route('/')
@@ -34,19 +44,60 @@ def admin():
     return render_template('admin.html')
 
 # --- API: PRODUCTOS (Mongo) ---
-@app.route('/api/products', methods=['GET'])
-def get_products():
+@app.route('/api/products', methods=['GET', 'POST'])
+def handle_products():
     db = get_db()
     
+    # --- Lógica POST (Crear producto con imagen) ---
+    if request.method == 'POST':
+        # Verificar permisos
+        if session.get('rol') != 'admin':
+            return jsonify({'ok': False, 'msg': 'Acceso denegado'}), 403
+
+        # Obtener datos del formulario (FormData)
+        name = request.form.get('name')
+        desc = request.form.get('desc')
+        price = request.form.get('price')
+        file = request.files.get('image')
+
+        if not file or not name or not price:
+            return jsonify({'ok': False, 'msg': 'Faltan datos obligatorios'}), 400
+
+        if not allowed_file(file.filename):
+            return jsonify({'ok': False, 'msg': 'Formato no permitido. Solo JPG, PNG o GIF.'}), 400
+
+        # Guardar imagen
+        filename = secure_filename(file.filename)
+        unique_name = f"{int(datetime.now().timestamp())}_{filename}" # Evitar duplicados
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_name))
+        
+        # Guardar en BD
+        image_url = url_for('static', filename=f'uploads/{unique_name}')
+        db.products.insert_one({
+            'name': name,
+            'desc': desc,
+            'price': float(price),
+            'image': image_url
+        })
+        return jsonify({'ok': True, 'msg': 'Producto creado exitosamente'})
+
+    # --- Lógica GET (Listar productos) ---
     # Parámetros de paginación
     try:
         page = int(request.args.get('page', 1))
         limit = int(request.args.get('limit', 3)) # Límite bajo para probar paginación
+        search_query = request.args.get('search', '').strip()
     except ValueError:
         page = 1
         limit = 3
+        search_query = ''
         
     skip = (page - 1) * limit
+
+    # Filtro de búsqueda
+    query = {}
+    if search_query:
+        query['name'] = {'$regex': search_query, '$options': 'i'} # Búsqueda insensible a mayúsculas
 
     # Verificar si hay productos, si no, crear defaults
     if db.products.count_documents({}) == 0:
@@ -59,8 +110,8 @@ def get_products():
         db.products.insert_many(defaults)
 
     # Obtener total y productos de la página actual
-    total_products = db.products.count_documents({})
-    products_list = list(db.products.find().skip(skip).limit(limit))
+    total_products = db.products.count_documents(query)
+    products_list = list(db.products.find(query).skip(skip).limit(limit))
 
     # Convertir ObjectId a string
     for p in products_list:
@@ -74,6 +125,106 @@ def get_products():
         'has_next': (skip + limit) < total_products,
         'has_prev': page > 1
     })
+
+@app.route('/api/products/<product_id>', methods=['PUT'])
+def update_product(product_id):
+    if session.get('rol') != 'admin':
+        return jsonify({'ok': False, 'msg': 'Acceso denegado'}), 403
+    
+    db = get_db()
+    
+    # Obtener datos
+    name = request.form.get('name')
+    desc = request.form.get('desc')
+    price = request.form.get('price')
+    file = request.files.get('image')
+    
+    if not name or not price:
+         return jsonify({'ok': False, 'msg': 'Faltan datos'}), 400
+
+    update_data = {
+        'name': name,
+        'desc': desc,
+        'price': float(price)
+    }
+
+    # Si se sube una nueva imagen, borrar la anterior y guardar la nueva
+    if file and allowed_file(file.filename):
+        product = db.products.find_one({'_id': ObjectId(product_id)})
+        if product:
+            old_image = product.get('image')
+            # Intentar borrar archivo viejo si es local
+            if old_image and 'uploads/' in old_image:
+                try:
+                    old_filename = old_image.split('uploads/')[-1]
+                    old_path = os.path.join(app.config['UPLOAD_FOLDER'], old_filename)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                except Exception as e:
+                    print(f"Error borrando imagen antigua: {e}")
+        
+        # Guardar nueva
+        filename = secure_filename(file.filename)
+        unique_name = f"{int(datetime.now().timestamp())}_{filename}"
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_name))
+        update_data['image'] = url_for('static', filename=f'uploads/{unique_name}')
+    
+    db.products.update_one({'_id': ObjectId(product_id)}, {'$set': update_data})
+    return jsonify({'ok': True, 'msg': 'Producto actualizado'})
+
+@app.route('/api/products/<product_id>', methods=['DELETE'])
+def delete_product(product_id):
+    if session.get('rol') != 'admin':
+        return jsonify({'ok': False, 'msg': 'Acceso denegado'}), 403
+    
+    db = get_db()
+    
+    # 1. Buscar producto para obtener la imagen
+    product = db.products.find_one({'_id': ObjectId(product_id)})
+    
+    if product:
+        # 2. Borrar archivo de imagen si existe y es local
+        image_url = product.get('image')
+        if image_url and 'uploads/' in image_url:
+            try:
+                filename = image_url.split('uploads/')[-1]
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception as e:
+                print(f"Error al borrar archivo: {e}")
+
+    result = db.products.delete_one({'_id': ObjectId(product_id)})
+    
+    if result.deleted_count > 0:
+        return jsonify({'ok': True, 'msg': 'Producto eliminado'})
+    return jsonify({'ok': False, 'msg': 'Producto no encontrado'}), 404
+
+# --- API: CARRITO (Base de Datos) ---
+@app.route('/api/cart', methods=['GET', 'POST'])
+def handle_cart():
+    if 'user_id' not in session:
+        return jsonify({'ok': False, 'msg': 'Usuario no autenticado'}), 401
+    
+    db = get_db()
+    user_id = session['user_id']
+
+    if request.method == 'POST':
+        # Guardar carrito completo
+        data = request.get_json()
+        items = data.get('items', [])
+        # Usamos upsert: si existe actualiza, si no crea
+        db.carts.update_one(
+            {'user_id': user_id},
+            {'$set': {'items': items, 'updated_at': datetime.now()}},
+            upsert=True
+        )
+        return jsonify({'ok': True})
+    
+    else: # GET
+        cart_doc = db.carts.find_one({'user_id': user_id})
+        items = cart_doc['items'] if cart_doc else []
+        return jsonify({'ok': True, 'items': items})
 
 # --- API: ACTUALIZAR PERFIL ---
 @app.route('/api/profile', methods=['PUT'])

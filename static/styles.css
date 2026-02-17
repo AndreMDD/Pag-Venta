@@ -93,6 +93,18 @@ button { font-family: inherit; }
   letter-spacing: 0.2px;
 }
 
+/* Buscador en Header */
+.search-bar {
+  flex-grow: 1;
+  max-width: 400px;
+  margin: 0 var(--space-md);
+}
+.search-bar input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: var(--radius-sm);
+}
 nav { display:flex; align-items:center; }
 .nav-btn {
   background: transparent;
@@ -227,17 +239,9 @@ nav { display:flex; align-items:center; }
 .password-wrapper input {
   margin-bottom: 0;
   width: 100%;
-  padding-right: 40px; /* Espacio para que el texto no tape el icono */
 }
 .toggle-password {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  cursor: pointer;
-  font-size: 1.2rem;
-  user-select: none;
-  background: transparent;
+  display: none;
 }
 .auth-form input:focus { background-color: #fff; border-color: var(--color-accent); outline: none; box-shadow: 0 0 0 3px rgba(214, 51, 108, 0.1); }
 .error-msg {
@@ -256,6 +260,21 @@ nav { display:flex; align-items:center; }
   margin-bottom: 16px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  transition: background-color 0.3s, opacity 0.3s;
+}
+.auth-form button.primary:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Indicador de fortaleza de contraseña */
+.strength-text {
+  font-size: 0.85rem;
+  margin-top: -12px; /* Pegarlo un poco al input de arriba */
+  margin-bottom: 12px;
+  font-weight: 600;
+  min-height: 1.2em;
 }
 
 /* ==========================
@@ -303,11 +322,45 @@ nav { display:flex; align-items:center; }
    Footer
    ========================== */
 .site-footer {
+  background-color: #f8f9fa;
   border-top:1px solid var(--color-border);
-  padding: 18px 0;
-  margin-top: 24px;
-  text-align:center;
+  padding: 40px 0 20px;
+  margin-top: 40px;
+  font-size: 0.95rem;
+}
+.footer-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+.footer-section {
+  flex: 1;
+  min-width: 200px;
+}
+.footer-section h4 {
+  color: var(--color-accent);
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+.footer-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.footer-links li { margin-bottom: 8px; }
+.footer-links a { text-decoration: none; color: var(--color-text); transition: color 0.2s; }
+.footer-links a:hover { color: var(--color-accent); }
+.social-links { display: flex; gap: 15px; }
+.social-links a { text-decoration: none; color: var(--color-muted); font-weight: 600; }
+.social-links a:hover { color: var(--color-accent); }
+.footer-bottom {
+  text-align: center;
+  border-top: 1px solid #e9ecef;
+  padding-top: 20px;
   color: var(--color-muted);
+  font-size: 0.85rem;
 }
 
 /* ==========================
@@ -333,3 +386,76 @@ nav { display:flex; align-items:center; }
    - Añade utilidades abajo si las reutilizas mucho
    - Mantén los nombres semánticos para buscar más fácilmente
    ========================== */
+
+/* ==========================
+   Notificaciones (Toast)
+   ========================== */
+.toast {
+  position: fixed;
+  top: 120px; /* Más abajo para mejor visibilidad */
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px); /* Empieza un poco más arriba */
+  background-color: var(--color-accent);
+  color: #fff;
+  padding: 14px 30px;
+  border-radius: 50px; /* Diseño redondeado tipo píldora */
+  box-shadow: 0 10px 25px rgba(214, 51, 108, 0.4); /* Sombra suave con color */
+  z-index: 3000;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Animación con rebote */
+  pointer-events: auto; /* Permite recibir clics para cerrar */
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.toast.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+/* Icono automático antes del texto */
+.toast::before {
+  content: '✓';
+  background: rgba(255,255,255,0.25);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+}
+
+/* ==========================
+   Estilos específicos de Perfil
+   ========================== */
+.input-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.input-with-icon input {
+  flex-grow: 1;
+  margin-bottom: 0; /* El margen lo maneja el grupo */
+}
+.input-with-icon input:disabled {
+  background-color: #f9f9f9;
+  color: #555;
+  border-color: transparent;
+}
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 4px 8px;
+  transition: transform 0.2s;
+}
+.icon-btn:hover {
+  transform: scale(1.1);
+}
+.full-width { width: 100%; }
+.btn.outline { background: transparent; border: 1px solid #ccc; color: #333; }
+.btn.secondary { background: #f0f0f0; color: #333; border: 1px solid #ddd; }

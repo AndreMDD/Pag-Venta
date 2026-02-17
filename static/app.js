@@ -1,7 +1,8 @@
-// Lógica simple de frontend: productos, carrito y auth en localStorage
+// Lógica frontend: productos, carrito (híbrido DB/Local) y auth
 
 // Cache de productos en memoria
 let PRODUCTS_CACHE = [];
+let CART_CACHE = []; // Cache del carrito en memoria
 let CURRENT_PAGE = 1;
 let TOTAL_PAGES = 1;
 
@@ -10,10 +11,13 @@ let sessionWarningTimer;
 let sessionLogoutTimer;
 const SESSION_LIFETIME = 30 * 60 * 1000; // 30 minutos
 const WARNING_TIME = 28 * 60 * 1000;     // Avisar a los 28 minutos
+let lastActivityReset = Date.now();
 
 async function fetchProducts(page = 1) {
   try {
-    const res = await fetch(`/api/products?page=${page}&limit=3`);
+    const searchInput = $('#search-input');
+    const query = searchInput ? searchInput.value : '';
+    const res = await fetch(`/api/products?page=${page}&limit=3&search=${encodeURIComponent(query)}`);
     const data = await res.json();
     PRODUCTS_CACHE = data.products; // Actualizamos cache solo con los visibles
     TOTAL_PAGES = data.pages;
@@ -26,6 +30,18 @@ const $ = (s)=>document.querySelector(s);
 const $$ = (s)=>document.querySelectorAll(s);
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('es-CL', {style: 'currency', currency: 'CLP'}).format(amount);
+};
+
+// Helper para Spinner (Global)
+const toggleLoading = (btn, isLoading) => {
+  if(isLoading) {
+    btn.dataset.originalText = btn.textContent;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Procesando...';
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.originalText;
+  }
 };
 
 // ---------- RENDER ----------
@@ -80,34 +96,69 @@ function renderPaginationControls() {
 }
 
 // ---------- CARRITO ----------
-function getCart(){
-  return JSON.parse(localStorage.getItem('cart')||'[]');
+// Cargar carrito inicial (decide si usar API o LocalStorage)
+async function loadCart() {
+  const user = getCurrentUser();
+  if (user) {
+    // Si hay usuario, intentamos cargar de la BD
+    try {
+      const res = await fetch('/api/cart');
+      const data = await res.json();
+      if (data.ok) CART_CACHE = data.items;
+      else CART_CACHE = [];
+    } catch (e) { console.error(e); CART_CACHE = []; }
+  } else {
+    // Si no, usamos localStorage
+    CART_CACHE = JSON.parse(localStorage.getItem('cart') || '[]');
+  }
+  renderCart();
 }
-function saveCart(items){
-  localStorage.setItem('cart',JSON.stringify(items));
+
+// Guardar carrito (decide dónde guardar)
+async function saveCart(items) {
+  CART_CACHE = items; // Actualizar memoria
+  const user = getCurrentUser();
+  
+  if (user) {
+    // Guardar en BD
+    try {
+      await fetch('/api/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: items })
+      });
+    } catch (e) { console.error("Error guardando carrito en BD", e); }
+  } else {
+    // Guardar en LocalStorage
+    localStorage.setItem('cart', JSON.stringify(items));
+  }
+  renderCart();
 }
+
 function addToCart(id){
   const product = PRODUCTS_CACHE.find(p=>p._id===id);
   if(!product) return;
-  const cart = getCart();
+  // Usamos la cache en memoria (que ya se cargó al inicio)
+  const cart = [...CART_CACHE]; 
   const item = cart.find(i=>i._id===id);
   if(item) item.qty+=1; else cart.push({_id:product._id,name:product.name,price:product.price,qty:1});
   saveCart(cart);
-  renderCart();
 }
 function removeFromCart(id){
-  let cart = getCart().filter(i=>i._id!==id);
+  let cart = CART_CACHE.filter(i=>i._id!==id);
   saveCart(cart);
-  renderCart();
 }
 function renderCart(){
   const list = $('#cart-items');
   const count = $('#cart-count');
   const totalEl = $('#cart-total');
-  const cart = getCart();
+  
+  // Verificación de seguridad: Si no existen los elementos (ej. en perfil), salir sin error
+  if(!list || !count || !totalEl) return;
+
   list.innerHTML='';
   let total=0, qty=0;
-  cart.forEach(i=>{
+  CART_CACHE.forEach(i=>{
     const li = document.createElement('li');
     li.innerHTML = `${i.name} x ${i.qty} - ${formatCurrency(i.price*i.qty)} <button class="btn" data-remove="${i._id}">Eliminar</button>`;
     list.appendChild(li);
@@ -127,6 +178,7 @@ async function initAuth(){
       localStorage.removeItem('currentUser');
       renderAuthState(); // Actualizar UI para mostrar "Iniciar sesión"
     } else {
+      await loadCart(); // Cargar carrito de la BD si la sesión es válida
       startSessionTimers(); // La sesión es válida, iniciar conteo
     }
   } catch(e) {}
@@ -161,6 +213,7 @@ async function loginUser(email,password){
     const data = await response.json();
     if(data.ok) {
       setCurrentUser(data.user);
+      await loadCart(); // Cargar carrito de la BD al entrar
       startSessionTimers(); // Iniciar conteo al entrar
     }
     return data;
@@ -174,12 +227,19 @@ async function logout(){
   clearSessionTimers(); // Detener conteo al salir
   try { await fetch('/logout'); } catch(e){} // Avisar al servidor
   localStorage.removeItem('currentUser'); 
+  CART_CACHE = []; // Limpiar carrito en memoria
+  renderCart(); // Limpiar UI
   renderAuthState(); 
 }
 
 // ---------- GESTIÓN DE TIEMPO DE SESIÓN ----------
 function startSessionTimers() {
   clearSessionTimers();
+  
+  // Si el usuario volvió a estar activo, aseguramos que el modal de advertencia se oculte
+  const modal = $('#session-warning-modal');
+  if(modal) modal.classList.add('hidden');
+
   // 1. Temporizador para mostrar la advertencia (a los 28 min)
   sessionWarningTimer = setTimeout(() => {
     const modal = $('#session-warning-modal');
@@ -199,6 +259,27 @@ function startSessionTimers() {
 function clearSessionTimers() {
   if (sessionWarningTimer) clearTimeout(sessionWarningTimer);
   if (sessionLogoutTimer) clearTimeout(sessionLogoutTimer);
+}
+
+function setupActivityTracking() {
+  // Eventos que consideramos "actividad"
+  const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+  
+  const resetActivity = () => {
+    const now = Date.now();
+    // Throttle: Solo reiniciar si ha pasado más de 1 minuto desde el último reset
+    // Esto evita reiniciar el timer miles de veces por segundo al mover el mouse
+    if (now - lastActivityReset > 60000) { 
+      lastActivityReset = now;
+      const user = getCurrentUser();
+      if(user) {
+        startSessionTimers(); // Reinicia el conteo local
+        fetch('/api/session').catch(()=>{}); // Mantiene viva la sesión en servidor
+      }
+    }
+  };
+
+  events.forEach(evt => document.addEventListener(evt, resetActivity, { passive: true }));
 }
 
 function renderAuthState(){
@@ -247,14 +328,6 @@ function renderProfile(){
   if($('#profile-name-input')) $('#profile-name-input').value = user.name;
   if($('#profile-email')) $('#profile-email').value = user.email;
   if($('#profile-id')) $('#profile-id').value = user._id || 'N/A';
-  
-  if($('#btn-logout-profile')){
-    $('#btn-logout-profile').addEventListener('click', async ()=>{
-      // Sin confirmación (cuadrado), cierre directo
-      await logout();
-      window.location.href = '/';
-    });
-  }
 }
 
 async function updateUserProfile(name, email){
@@ -276,6 +349,7 @@ async function updateUserProfile(name, email){
       msgEl.style.color = 'green';
       // Actualizar sesión local
       setCurrentUser({...user, name, email});
+      disableProfileInputs(); // Volver a bloquear inputs
       if($('#profile-name')) $('#profile-name').textContent = name;
     } else {
       msgEl.textContent = data.msg || 'Error al guardar';
@@ -284,6 +358,17 @@ async function updateUserProfile(name, email){
   } catch (e) {
     msgEl.textContent = 'Error de conexión';
     msgEl.style.color = 'red';
+  }
+}
+
+// Helper para bloquear inputs tras guardar
+function disableProfileInputs() {
+  const inputs = $$('.input-with-icon input');
+  inputs.forEach(i => i.disabled = true);
+  const saveBtn = $('#btn-save-profile');
+  if(saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Guardar Cambios';
   }
 }
 
@@ -297,24 +382,168 @@ function renderAdminPanel() {
     return;
   }
 
+  let editingId = null;
+  let adminProductsCache = [];
+
+  // Función para cargar lista de productos en admin
+  const loadAdminProducts = async () => {
+    const list = $('#admin-products-list');
+    if(!list) return;
+    list.innerHTML = '<p class="center small muted">Cargando productos...</p>';
+    
+    try {
+      // Pedimos productos (con un límite alto para verlos todos en el admin)
+      const res = await fetch('/api/products?limit=50'); 
+      const data = await res.json();
+      adminProductsCache = data.products || [];
+      
+      if(data.products && data.products.length > 0){
+        list.innerHTML = '';
+        data.products.forEach(p => {
+          const li = document.createElement('li');
+          li.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding: 10px 0; border-bottom: 1px solid #f0f0f0;';
+          li.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
+              <img src="${p.image}" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">
+              <div>
+                <strong style="display:block; font-size: 0.95rem;">${p.name}</strong>
+                <span class="muted small">${formatCurrency(p.price)}</span>
+              </div>
+            </div>
+            <div style="display:flex; gap: 5px;">
+              <button class="btn" style="background:#33b5e5; color:white; border:none; padding: 4px 8px; font-size: 0.8rem;" data-edit-product="${p._id}">Editar</button>
+              <button class="btn" style="background:#ff4444; color:white; border:none; padding: 4px 8px; font-size: 0.8rem;" data-delete-product="${p._id}">Eliminar</button>
+            </div>
+          `;
+          list.appendChild(li);
+        });
+      } else {
+        list.innerHTML = '<p class="center small muted">No hay productos.</p>';
+      }
+    } catch(e) {
+      console.error(e);
+      list.innerHTML = '<p class="error-msg small">Error al cargar productos.</p>';
+    }
+  };
+
+  // Eventos de la lista (Eliminar y Editar)
+  const adminProdListEl = $('#admin-products-list');
+  if(adminProdListEl) {
+    adminProdListEl.addEventListener('click', async (e) => {
+      // --- EDITAR ---
+      if(e.target.matches('[data-edit-product]')) {
+        const id = e.target.dataset.editProduct;
+        const p = adminProductsCache.find(x => x._id === id);
+        if(p) {
+          editingId = id;
+          // Rellenar formulario
+          $('#prod-name').value = p.name;
+          $('#prod-desc').value = p.desc;
+          $('#prod-price').value = p.price;
+          $('#prod-image').required = false; // Imagen opcional al editar
+          
+          // Actualizar UI
+          $('#btn-submit-prod').textContent = 'Actualizar Producto';
+          $('#btn-cancel-edit').classList.remove('hidden');
+          $('#admin-product-form').scrollIntoView({behavior: 'smooth'});
+        }
+      }
+
+      // --- ELIMINAR ---
+      if(e.target.matches('[data-delete-product]')) {
+        const id = e.target.dataset.deleteProduct;
+        if(confirm('¿Estás seguro de eliminar este producto?')) {
+          try {
+            const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if(data.ok) {
+              alert('Producto eliminado');
+              loadAdminProducts(); // Recargar lista
+            } else {
+              alert(data.msg || 'Error al eliminar');
+            }
+          } catch(e) { alert('Error de conexión'); }
+        }
+      }
+    });
+  }
+
+  // Cargar productos al entrar
+  loadAdminProducts();
+
+  // Botón Cancelar Edición
+  const cancelBtn = $('#btn-cancel-edit');
+  if(cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      editingId = null;
+      $('#admin-product-form').reset();
+      $('#prod-image').required = true;
+      $('#btn-submit-prod').textContent = 'Guardar Producto';
+      cancelBtn.classList.add('hidden');
+    });
+  }
+
   const form = $('#admin-product-form');
   if(form) {
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const btn = $('#btn-submit-prod');
       const name = $('#prod-name').value.trim();
       const desc = $('#prod-desc').value.trim();
       const price = parseFloat($('#prod-price').value);
-      const image = $('#prod-image').value.trim();
-
-      if(!name || !desc || isNaN(price) || !image) return alert('Todos los campos son obligatorios');
-
-      // Aquí deberías agregar una ruta POST /api/products en Flask para guardar en Mongo
-      // Por ahora, solo alerta visual ya que pediste centrarte en perfil/logout
-      // products.push({ _id: newId, name, price, desc, image });
-      // localStorage.setItem('products', JSON.stringify(products));
+      const imageFile = $('#prod-image').files[0];
       
-      alert('Producto agregado correctamente');
-      form.reset();
+      // Validación: Imagen obligatoria solo si NO estamos editando
+      if(!name || !desc || isNaN(price)) return alert('Faltan campos de texto');
+      if(!editingId && !imageFile) return alert('La imagen es obligatoria para nuevos productos');
+
+      toggleLoading(btn, true);
+
+      // Crear FormData para enviar archivo + texto
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('desc', desc);
+      formData.append('price', price);
+      if(imageFile) formData.append('image', imageFile);
+      
+      try {
+        // Decidir URL y Método según si editamos o creamos
+        const url = editingId ? `/api/products/${editingId}` : '/api/products';
+        const method = editingId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+          method: method,
+          body: formData // El navegador configura automáticamente el Content-Type multipart/form-data
+        });
+
+        // Intentar leer la respuesta como JSON
+        let data;
+        try {
+          data = await res.json();
+        } catch (jsonError) {
+          // Si falla al leer JSON, es probable que el servidor devolviera HTML (Error 500, 413, etc.)
+          throw new Error(`Error del servidor (${res.status}). Posiblemente la imagen es muy pesada o hubo un fallo interno.`);
+        }
+        
+        toggleLoading(btn, false);
+        
+        if(data.ok) { 
+          showToast(editingId ? 'Producto actualizado correctamente' : 'Producto agregado correctamente'); 
+          form.reset(); 
+          // Resetear estado de edición
+          editingId = null;
+          $('#prod-image').required = true;
+          $('#btn-submit-prod').textContent = 'Guardar Producto';
+          if(cancelBtn) cancelBtn.classList.add('hidden');
+          
+          loadAdminProducts(); // Recargar lista
+        }
+        else { alert(data.msg || 'Error al subir producto'); }
+      } catch(err) { 
+        console.error(err); 
+        toggleLoading(btn, false);
+        alert(err.message || 'Error de conexión'); 
+      }
     });
   }
 
@@ -426,9 +655,10 @@ function renderAdminPanel() {
 // ---------- EVENTOS ----------
 function setupEvents(){
   initAuth(); // Inicialización única de usuarios base
+  setupActivityTracking(); // Iniciar detector de actividad
   // Solo renderizar si existen los elementos (para evitar errores en pag perfil)
   if($('#products')) renderProducts();
-  if($('#cart-items')) renderCart();
+  if($('#cart-items')) loadCart(); // Cargar carrito inicial
   if($('#profile-name')) renderProfile(); // Lógica específica de perfil
   if($('#admin-product-form')) renderAdminPanel(); // Lógica específica de admin
   
@@ -471,6 +701,56 @@ function setupEvents(){
     });
   }
 
+  // Eventos de edición en perfil (Lápiz)
+  const editBtns = $$('.edit-field');
+  if(editBtns.length > 0) {
+    editBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        // Encontrar el input hermano
+        const input = e.currentTarget.previousElementSibling;
+        if(input) {
+          input.disabled = false;
+          input.focus();
+          // Habilitar botón de guardar
+          const saveBtn = $('#btn-save-profile');
+          if(saveBtn) saveBtn.disabled = false;
+        }
+      });
+    });
+  }
+
+  // Logout desde Perfil (Centralizado)
+  if($('#btn-logout-profile')){
+    $('#btn-logout-profile').addEventListener('click', async ()=>{
+      if(!confirm('¿Estás seguro de que deseas cerrar sesión?')) return;
+      await logout();
+      localStorage.setItem('toastMessage', 'Hasta pronto'); // Guardar mensaje para mostrar tras redirección
+      window.location.href = '/';
+    });
+  }
+
+  // Logout desde Admin (Nuevo)
+  if($('#btn-logout-admin')){
+    $('#btn-logout-admin').addEventListener('click', async ()=>{
+      if(!confirm('¿Estás seguro de que deseas cerrar sesión?')) return;
+      await logout();
+      localStorage.setItem('toastMessage', 'Hasta pronto');
+      window.location.href = '/';
+    });
+  }
+
+  // Botones extra de perfil (Demo)
+  if($('#btn-change-pass')){
+    $('#btn-change-pass').addEventListener('click', () => {
+      alert('Funcionalidad de cambio de contraseña (Demo). Aquí se abriría un modal.');
+    });
+  }
+  if($('#btn-add-payment')){
+    $('#btn-add-payment').addEventListener('click', () => {
+      alert('Funcionalidad de agregar método de pago (Demo). Aquí se abriría un formulario de tarjeta.');
+    });
+  }
+
   if($('#btn-cart')){
     $('#btn-cart').addEventListener('click',()=>{
       $('#cart').classList.toggle('hidden');
@@ -483,26 +763,53 @@ function setupEvents(){
     });
   }
 
+  // Evento del buscador
+  if($('#search-input')){
+    $('#search-input').addEventListener('input', (e) => {
+      CURRENT_PAGE = 1; // Resetear a página 1 al buscar
+      renderProducts();
+    });
+  }
+
   // Helpers para errores
   const showError = (selector, msg) => {
     const el = $(selector);
     if(el) el.textContent = msg;
     else alert(msg); // Fallback: si no existe el elemento visual, usa alerta
   };
-  const clearErrors = () => $$('.error-msg').forEach(el => el.textContent = '');
-  
-  // Helper para Spinner
-  const toggleLoading = (btn, isLoading) => {
-    if(isLoading) {
-      btn.dataset.originalText = btn.textContent;
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span> Procesando...';
-    } else {
-      btn.disabled = false;
-      btn.textContent = btn.dataset.originalText;
+
+  // Helper para Toast (Notificación temporal)
+  const showToast = (msg) => {
+    let toast = $('#toast-notification');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'toast-notification';
+      toast.className = 'toast';
+      document.body.appendChild(toast);
     }
+    toast.textContent = msg;
+    toast.classList.add('show');
+
+    const hide = () => {
+      toast.classList.remove('show');
+      document.removeEventListener('click', hide);
+    };
+
+    // Auto ocultar a los 2 segundos
+    setTimeout(hide, 2000);
+    // Ocultar al hacer clic en cualquier parte (con ligero delay para no capturar el clic actual)
+    setTimeout(() => document.addEventListener('click', hide), 100);
   };
 
+  // Verificar si hay un mensaje pendiente (ej. tras logout)
+  const pendingToast = localStorage.getItem('toastMessage');
+  if(pendingToast) {
+    showToast(pendingToast);
+    localStorage.removeItem('toastMessage');
+  }
+
+  const clearErrors = () => $$('.error-msg').forEach(el => el.textContent = '');
+  
   const closeModal = () => {
     $('#auth-modal').classList.add('hidden');
     clearErrors();
@@ -532,6 +839,49 @@ function setupEvents(){
 
   // Register
   const regForm = $('#register-form');
+  
+  // Lógica de validación en tiempo real y fortaleza de contraseña
+  if(regForm) {
+    const regBtn = $('#btn-register-submit');
+    const passInput = $('#reg-password');
+    const strengthEl = $('#password-strength');
+    const allInputs = regForm.querySelectorAll('input');
+
+    // Función para evaluar fortaleza
+    const checkStrength = (val) => {
+      if(!val) {
+        strengthEl.textContent = '';
+        return;
+      }
+      if(val.length < 6) {
+        strengthEl.textContent = 'Débil (mínimo 6 caracteres)';
+        strengthEl.style.color = '#ff4444'; // Rojo
+      } else if (val.length >= 8 && /[0-9]/.test(val)) {
+        strengthEl.textContent = 'Fuerte';
+        strengthEl.style.color = '#00C851'; // Verde
+      } else {
+        strengthEl.textContent = 'Media';
+        strengthEl.style.color = '#ffbb33'; // Naranja
+      }
+    };
+
+    // Función para habilitar/deshabilitar botón
+    const validateFormInputs = () => {
+      let isValid = true;
+      allInputs.forEach(input => {
+        if(!input.value.trim()) isValid = false;
+      });
+      regBtn.disabled = !isValid;
+    };
+
+    // Event listeners para inputs
+    passInput.addEventListener('input', (e) => checkStrength(e.target.value));
+    
+    allInputs.forEach(input => {
+      input.addEventListener('input', validateFormInputs);
+    });
+  }
+
   if(regForm){
     regForm.addEventListener('submit',e=>{
       e.preventDefault();
@@ -539,6 +889,7 @@ function setupEvents(){
       const name = $('#reg-name').value.trim();
       const email = $('#reg-email').value.trim();
       const pass = $('#reg-password').value;
+      const passConfirm = $('#reg-password-confirm').value;
       
       clearErrors();
 
@@ -548,6 +899,9 @@ function setupEvents(){
 
       // Validación de longitud de contraseña
       if(pass.length < 6) return showError('#register-error', 'La contraseña debe tener al menos 6 caracteres.');
+
+      // Validación de coincidencia de contraseñas
+      if(pass !== passConfirm) return showError('#register-error', 'Las contraseñas no coinciden.');
 
       // Activar spinner
       toggleLoading(btn, true);
@@ -559,10 +913,9 @@ function setupEvents(){
 
         if(!r.ok) return showError('#register-error', r.msg);
         
-        alert('Registro correcto. Sesión iniciada.');
         closeModal();
-        // Redirigir al inicio tras registro exitoso
-        window.location.href = '/';
+        showToast('Registro correcto. Sesión iniciada.');
+        // No recargamos la página para que se vea el mensaje
       }, 1500);
     });
   }
@@ -585,10 +938,9 @@ function setupEvents(){
 
         if(!r.ok) return showError('#login-error', r.msg);
         
-        alert('Bienvenida/o!');
         closeModal();
-        // Redirigir al inicio tras login
-        window.location.href = '/';
+        showToast('¡Bienvenida/o!');
+        // No recargamos la página para que se vea el mensaje
       }, 1500);
     });
   }
@@ -596,7 +948,7 @@ function setupEvents(){
   // Checkout (demo)
   if($('#checkout-btn')){
     $('#checkout-btn').addEventListener('click',()=>{
-      const cart = getCart();
+      const cart = CART_CACHE;
       if(cart.length===0) return alert('El carrito está vacío');
       const user = getCurrentUser();
       if(!user) return alert('Debes iniciar sesión o registrarte para pagar.');
@@ -607,20 +959,6 @@ function setupEvents(){
       $('#cart').classList.add('hidden');
     });
   }
-
-  // Toggle mostrar/ocultar contraseña
-  document.querySelectorAll('.toggle-password').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const input = btn.previousElementSibling;
-      if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = '🙈'; // Icono de ocultar
-      } else {
-        input.type = 'password';
-        btn.textContent = '👁️'; // Icono de mostrar
-      }
-    });
-  });
 }
 
 // Inicialización
