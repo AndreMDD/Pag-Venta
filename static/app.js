@@ -35,6 +35,29 @@ const formatCurrency = (amount) => {
   return new Intl.NumberFormat('es-CL', {style: 'currency', currency: 'CLP'}).format(amount);
 };
 
+const timeAgo = (dateString) => {
+  if(!dateString) return '';
+  // Parsear fecha localmente (YYYY-MM-DD)
+  const [y, m, d] = dateString.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const now = new Date();
+  
+  // Normalizar a medianoche para comparar días completos
+  const d1 = new Date(date); d1.setHours(0,0,0,0);
+  const d2 = new Date(now); d2.setHours(0,0,0,0);
+  const diffDays = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
+  
+  if (diffDays <= 0) return "Hoy";
+  if (diffDays === 1) return "Ayer";
+  if (diffDays < 30) return `Hace ${diffDays} días`;
+  if (diffDays < 365) {
+    const months = Math.max(1, Math.floor(diffDays / 30));
+    return `Hace ${months} ${months === 1 ? 'mes' : 'meses'}`;
+  }
+  const years = Math.max(1, Math.floor(diffDays / 365));
+  return `Hace ${years} ${years === 1 ? 'año' : 'años'}`;
+};
+
 // Helper para Spinner (Global)
 const toggleLoading = (btn, isLoading) => {
   if(isLoading) {
@@ -130,9 +153,13 @@ async function renderProducts(){
         li.className = 'carousel-slide product-card'; // Reutilizamos estilo de tarjeta
         li.innerHTML = `
           ${discountBadge}
-          < <h4>${p.name}</h4>
-          </div>v class="card-actions">
-            ${priceHtml}button class="btn primary" data-id="${p._id}">🛒 Agregar</button>
+          <div class="product-trigger" data-id="${p._id}" style="cursor:pointer;">
+            <img src="${p.image}" alt="${p.name}">
+            <h4>${p.name}</h4>
+          </div>
+          <div class="card-actions">
+            ${priceHtml}
+            <button class="btn primary" data-id="${p._id}">🛒 Agregar</button>
           </div>`;
         carouselTrack.appendChild(li);
       });
@@ -273,13 +300,41 @@ function addToCart(id){
   // Usamos la cache en memoria (que ya se cargó al inicio)
   const cart = [...CART_CACHE]; 
   const item = cart.find(i=>i._id===id);
-  if(item) item.qty+=1; else cart.push({_id:product._id,name:product.name,price:product.price,qty:1});
+  
+  if(item) {
+    item.qty+=1;
+    // Asegurar que tenemos la imagen (por si venía de una sesión antigua sin imagen)
+    if(!item.image) item.image = product.image;
+  } else {
+    cart.push({
+      _id: product._id,
+      name: product.name,
+      price: product.price,
+      image: product.image, // Guardamos la imagen
+      qty: 1
+    });
+  }
   saveCart(cart);
+  showToast('Producto agregado');
 }
+
 function removeFromCart(id){
   let cart = CART_CACHE.filter(i=>i._id!==id);
   saveCart(cart);
 }
+
+function updateCartQty(id, change) {
+  let cart = [...CART_CACHE];
+  const item = cart.find(i => i._id === id);
+  if (item) {
+    item.qty += change;
+    if (item.qty <= 0) {
+      cart = cart.filter(i => i._id !== id);
+    }
+    saveCart(cart);
+  }
+}
+
 function renderCart(){
   const list = $('#cart-items');
   const count = $('#cart-count');
@@ -290,14 +345,37 @@ function renderCart(){
 
   list.innerHTML='';
   let total=0, qty=0;
+  
+  if(CART_CACHE.length === 0) {
+    list.innerHTML = '<div class="center muted" style="margin-top: 50px;"><p style="font-size: 3rem; margin-bottom:10px;">🛒</p><p>Tu carrito está vacío</p></div>';
+  }
+
   CART_CACHE.forEach(i=>{
-    const li = document.createElement('li');
-    li.innerHTML = `${i.name} x ${i.qty} - ${formatCurrency(i.price*i.qty)} <button class="btn" data-remove="${i._id}">Eliminar</button>`;
+    const li = document.createElement('div');
+    li.className = 'cart-item';
+    const imgHtml = i.image ? `<img src="${i.image}" alt="${i.name}">` : `<div style="width:70px;height:70px;background:#eee;border-radius:8px;display:flex;align-items:center;justify-content:center;">📷</div>`;
+    
+    li.innerHTML = `
+      ${imgHtml}
+      <div class="cart-item-details">
+        <span class="cart-item-title">${i.name}</span>
+        <span class="cart-item-price">${formatCurrency(i.price)}</span>
+        <div class="cart-item-controls">
+          <button class="qty-btn" data-update-qty="${i._id}" data-change="-1">-</button>
+          <span>${i.qty}</span>
+          <button class="qty-btn" data-update-qty="${i._id}" data-change="1">+</button>
+          <button class="btn small" style="margin-left:auto; color:#ff4444; background:none; border:none; padding:0; font-size:0.8rem;" data-remove="${i._id}">Eliminar</button>
+        </div>
+      </div>`;
     list.appendChild(li);
     total += i.price*i.qty; qty += i.qty;
   });
   totalEl.textContent = formatCurrency(total);
   count.textContent = qty;
+  
+  // Ocultar badge si es 0, mostrar si hay items
+  if(qty === 0) count.classList.add('hidden');
+  else count.classList.remove('hidden');
 }
 
 // ---------- MODAL DE PRODUCTO (Quick View) ----------
@@ -328,8 +406,16 @@ async function openProductModal(productId) {
   // Botón agregar
   const addBtn = $('#pm-add-cart');
   addBtn.onclick = () => {
+    // Feedback visual en botón
+    const originalText = addBtn.innerHTML;
+    addBtn.textContent = '¡Agregado!';
+    addBtn.classList.add('added');
+    addBtn.disabled = true;
+
     addToCart(product._id);
-    showToast('Producto agregado al carrito');
+    
+    // Restaurar botón
+    setTimeout(() => { addBtn.innerHTML = originalText; addBtn.classList.remove('added'); addBtn.disabled = false; }, 1000);
   };
 
   // 2. Cargar Reseñas
@@ -350,6 +436,7 @@ async function openProductModal(productId) {
             <span style="color:#ffc107;">${'★'.repeat(r.rating)}</span>
           </div>
           <p style="margin:4px 0;">${r.comment}</p>
+          <small class="muted">${timeAgo(r.date)}</small>
         `;
         list.appendChild(li);
       });
@@ -893,6 +980,19 @@ function renderAdminPanel() {
   }
 }
 
+// Función para abrir/cerrar carrito
+const toggleCart = (show) => {
+  const cart = $('#cart');
+  const overlay = $('#cart-overlay');
+  if(show) {
+    cart.classList.add('open');
+    overlay.classList.remove('hidden');
+  } else {
+    cart.classList.remove('open');
+    overlay.classList.add('hidden');
+  }
+};
+
 // ---------- EVENTOS ----------
 function setupEvents(){
   initAuth(); // Inicialización única de usuarios base
@@ -902,6 +1002,13 @@ function setupEvents(){
   if($('#cart-items')) loadCart(); // Cargar carrito inicial
   if($('#profile-name')) renderProfile(); // Lógica específica de perfil
   if($('#admin-product-form')) renderAdminPanel(); // Lógica específica de admin
+  
+  // Formatear fechas de reseñas en la página de producto (si existen)
+  $$('.review-card small.muted').forEach(el => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(el.textContent.trim())) {
+      el.textContent = timeAgo(el.textContent.trim());
+    }
+  });
   
   // Lógica específica para página de Detalle de Producto
   const detailData = $('#product-detail-data');
@@ -1066,10 +1173,24 @@ function setupEvents(){
     }
 
     if(e.target.matches('[data-id]')){
-      addToCart(e.target.dataset.id); // Ya no usamos parseInt porque _id es string
+      const btn = e.target;
+      // Feedback visual
+      const originalText = btn.innerHTML;
+      btn.textContent = '¡Agregado!';
+      btn.classList.add('added');
+      btn.disabled = true;
+
+      addToCart(btn.dataset.id);
+      
+      setTimeout(() => { btn.innerHTML = originalText; btn.classList.remove('added'); btn.disabled = false; }, 1000);
     }
     if(e.target.matches('[data-remove]')){
       removeFromCart(e.target.dataset.remove); // Ya no usamos parseInt
+    }
+    if(e.target.matches('[data-update-qty]')){
+      const id = e.target.dataset.updateQty;
+      const change = parseInt(e.target.dataset.change);
+      updateCartQty(id, change);
     }
     // Click en imagen/título para abrir modal
     if(e.target.closest('.product-trigger')){
@@ -1139,9 +1260,13 @@ function setupEvents(){
   }
 
   if($('#btn-cart')){
-    $('#btn-cart').addEventListener('click',()=>{
-      $('#cart').classList.toggle('hidden');
-    });
+    $('#btn-cart').addEventListener('click',() => toggleCart(true));
+  }
+  
+  // Cerrar carrito
+  if($('#close-cart-btn')) $('#close-cart-btn').addEventListener('click', () => toggleCart(false));
+  if($('#cart-overlay')) {
+    $('#cart-overlay').addEventListener('click', () => toggleCart(false));
   }
 
   if($('#btn-products')){
@@ -1397,7 +1522,7 @@ function setupEvents(){
       alert(`Gracias ${user.name}, tu pedido por ${formatCurrency(cart.reduce((s,i)=>s+i.price*i.qty,0))} ha sido registrado (simulado).`);
       saveCart([]);
       renderCart();
-      $('#cart').classList.add('hidden');
+      toggleCart(false);
     });
   }
 }

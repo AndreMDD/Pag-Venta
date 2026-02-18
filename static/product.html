@@ -15,7 +15,7 @@
         <a href="/" style="text-decoration:none;"><h1 class="logo">BloomCare</h1></a>
         <nav>
           <a href="/" class="nav-btn" style="text-decoration:none;">Volver a la tienda</a>
-          <button id="btn-cart" class="nav-btn">Carrito (<span id="cart-count">0</span>)</button>
+          <button id="btn-cart" class="nav-btn" style="position: relative; padding-right: 10px;" aria-label="Carrito">🛒 <span id="cart-count" class="cart-badge hidden">0</span></button>
           <button id="btn-auth" class="nav-btn">Iniciar sesión</button>
         </nav>
       </div>
@@ -58,12 +58,24 @@
         </div>
       </div>
 
-      <aside id="cart" class="cart hidden">
-        <h3>Tu carrito</h3>
-        <ul id="cart-items"></ul>
+      <!-- Overlay del Carrito -->
+      <div id="cart-overlay" class="cart-overlay hidden"></div>
+
+      <!-- Sidebar del Carrito -->
+      <aside id="cart" class="cart-sidebar">
+        <div class="cart-header">
+          <h3>Tu Carrito</h3>
+          <button id="close-cart-btn" class="close" style="position:static;">×</button>
+        </div>
+        <div class="cart-body">
+          <div id="cart-items"></div>
+        </div>
         <div class="cart-footer">
-          <strong>Total: <span id="cart-total">0.00</span></strong>
-          <button id="checkout-btn" class="primary">Pagar</button>
+          <div class="cart-total-row">
+            <span>Total:</span>
+            <span id="cart-total">0.00</span>
+          </div>
+          <button id="checkout-btn" class="primary full-width">Proceder al Pago</button>
         </div>
       </aside>
     </main>
