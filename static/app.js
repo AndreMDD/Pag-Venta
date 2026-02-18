@@ -5,6 +5,9 @@ let PRODUCTS_CACHE = [];
 let CART_CACHE = []; // Cache del carrito en memoria
 let CURRENT_PAGE = 1;
 let TOTAL_PAGES = 1;
+let INVENTORY_SORT = 'desc'; // Orden por defecto
+let SHOW_OFFERS = false; // Estado del filtro de ofertas
+let carouselInterval; // Variable para el auto-scroll
 
 // Variables para el temporizador de sesión
 let sessionWarningTimer;
@@ -13,11 +16,11 @@ const SESSION_LIFETIME = 30 * 60 * 1000; // 30 minutos
 const WARNING_TIME = 28 * 60 * 1000;     // Avisar a los 28 minutos
 let lastActivityReset = Date.now();
 
-async function fetchProducts(page = 1) {
+async function fetchProducts(page = 1, limit = 3) {
   try {
     const searchInput = $('#search-input');
     const query = searchInput ? searchInput.value : '';
-    const res = await fetch(`/api/products?page=${page}&limit=3&search=${encodeURIComponent(query)}`);
+    const res = await fetch(`/api/products?page=${page}&limit=${limit}&search=${encodeURIComponent(query)}`);
     const data = await res.json();
     PRODUCTS_CACHE = data.products; // Actualizamos cache solo con los visibles
     TOTAL_PAGES = data.pages;
@@ -69,12 +72,94 @@ const showToast = (msg) => {
 
 // ---------- RENDER ----------
 async function renderProducts(){
-  const container = $('#products');
-  if(!container) return;
-  container.innerHTML='<p class="center">Cargando productos...</p>';
-  await fetchProducts(CURRENT_PAGE); // Cargar página actual
-  container.innerHTML='';
-  PRODUCTS_CACHE.forEach(p=>{
+  const gridContainer = $('#products');
+  const carouselSection = $('#carousel-section');
+  const carouselTrack = $('#carousel-track');
+
+  if(!gridContainer) return;
+  
+  gridContainer.innerHTML='<p class="center">Cargando productos...</p>';
+  
+  // Pedimos más productos (ej. 20) para poder llenar carrusel y grid
+  await fetchProducts(CURRENT_PAGE, 20); 
+  
+  gridContainer.innerHTML='';
+  if(carouselTrack) carouselTrack.innerHTML = '';
+
+  // Ordenar todos por precio descendente
+  const sortedProducts = [...PRODUCTS_CACHE].sort((a, b) => b.price - a.price);
+  // Tomar los 5 más caros para el carrusel
+  const highPrice = sortedProducts.slice(0, 5);
+  // El resto para la cuadrícula
+  let lowPrice = sortedProducts.slice(5);
+
+  // Filtrar si el modo "Solo Ofertas" está activo
+  if (SHOW_OFFERS) {
+    lowPrice = lowPrice.filter(p => p.discount && p.discount > 0);
+  }
+
+  // Ordenar el inventario según la selección del usuario
+  lowPrice.sort((a, b) => {
+    if (INVENTORY_SORT === 'asc') return a.price - b.price;
+    return b.price - a.price;
+  });
+
+  // 1. Renderizar Carrusel (Top caros)
+  if(carouselSection && carouselTrack) {
+    if(highPrice.length > 0) {
+      carouselSection.classList.remove('hidden');
+      highPrice.forEach(p => {
+        const li = document.createElement('li');
+        // Badge de descuento si existe y es mayor a 0
+        const discountBadge = (p.discount && p.discount > 0) ? `<span class="discount-badge" data-price="${p.price}" data-discount="${p.discount}" title="¡Clic para ver precio final!">-${p.discount}% OFF</span>` : '';
+        
+        // Lógica de visualización de precio (Oferta vs Normal)
+        let priceHtml;
+        if (p.discount && p.discount > 0) {
+          const finalPrice = p.price - (p.price * p.discount / 100);
+          priceHtml = `
+            <div class="price-block">
+              <span class="old-price">${formatCurrency(p.price)}</span>
+              <span class="new-price-tag">${formatCurrency(finalPrice)}</span>
+              <span class="limited-time-badge">⚡ Tiempo limitado</span>
+            </div>`;
+        } else {
+          priceHtml = `<strong>${formatCurrency(p.price)}</strong>`;
+        }
+
+        li.className = 'carousel-slide product-card'; // Reutilizamos estilo de tarjeta
+        li.innerHTML = `
+          ${discountBadge}
+          <img src="${p.image}" alt="${p.name}">
+          <h4>${p.name}</h4>
+          <div class="card-actions">
+            ${priceHtml}
+            <button class="btn primary" data-id="${p._id}">🛒 Agregar</button>
+          </div>`;
+        carouselTrack.appendChild(li);
+      });
+      startCarouselAutoScroll(); // Iniciar movimiento automático
+    } else {
+      carouselSection.classList.add('hidden');
+    }
+  }
+
+  // 2. Renderizar Grid (<= 1500)
+  lowPrice.forEach(p=>{
+    // Lógica de visualización de precio (Oferta vs Normal) para la Grid
+    let priceHtml;
+    if (p.discount && p.discount > 0) {
+      const finalPrice = p.price - (p.price * p.discount / 100);
+      priceHtml = `
+        <div class="price-block">
+          <span class="old-price">${formatCurrency(p.price)}</span>
+          <span class="new-price-tag">${formatCurrency(finalPrice)}</span>
+          <span class="limited-time-badge">⚡ Tiempo limitado</span>
+        </div>`;
+    } else {
+      priceHtml = `<strong>${formatCurrency(p.price)}</strong>`;
+    }
+
     const card = document.createElement('article');
     card.className='product-card';
     card.innerHTML = `
@@ -82,12 +167,36 @@ async function renderProducts(){
       <h4>${p.name}</h4>
       <p>${p.desc}</p>
       <div class="card-actions">
-        <strong>${formatCurrency(p.price)}</strong>
-        <button class="btn primary" data-id="${p._id}">Agregar</button>
+        ${priceHtml}
+        <button class="btn primary" data-id="${p._id}">🛒 Agregar</button>
       </div>`;
-    container.appendChild(card);
+    gridContainer.appendChild(card);
   });
+
   renderPaginationControls();
+}
+
+// Función para el auto-scroll del carrusel
+function startCarouselAutoScroll() {
+  const trackContainer = $('#carousel-container');
+  if (!trackContainer) return;
+  
+  if (carouselInterval) clearInterval(carouselInterval);
+  
+  carouselInterval = setInterval(() => {
+    const slide = trackContainer.querySelector('.carousel-slide');
+    if(!slide) return;
+    
+    const scrollAmount = slide.offsetWidth + 16; // Ancho card + gap (16px)
+    const maxScroll = trackContainer.scrollWidth - trackContainer.clientWidth;
+
+    // Si llegamos al final (con un pequeño margen de error), volver al inicio
+    if (trackContainer.scrollLeft >= maxScroll - 10) {
+      trackContainer.scrollTo({ left: 0, behavior: 'smooth' });
+    } else {
+      trackContainer.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  }, 4000); // Cada 4 segundos
 }
 
 function renderPaginationControls() {
@@ -464,6 +573,7 @@ function renderAdminPanel() {
           $('#prod-name').value = p.name;
           $('#prod-desc').value = p.desc;
           $('#prod-price').value = p.price;
+          $('#prod-discount').value = p.discount || 0;
           $('#prod-image').required = false; // Imagen opcional al editar
           
           // Actualizar UI
@@ -540,6 +650,7 @@ function renderAdminPanel() {
       const name = $('#prod-name').value.trim();
       const desc = $('#prod-desc').value.trim();
       const price = parseFloat($('#prod-price').value);
+      const discount = $('#prod-discount').value;
       const imageFile = $('#prod-image').files[0];
       
       // Validación: Imagen obligatoria solo si NO estamos editando
@@ -554,6 +665,7 @@ function renderAdminPanel() {
       formData.append('name', name);
       formData.append('desc', desc);
       formData.append('price', price);
+      formData.append('discount', discount);
       if(imageFile) formData.append('image', imageFile);
       
       try {
@@ -734,6 +846,31 @@ function setupEvents(){
   if($('#year')) $('#year').textContent = new Date().getFullYear();
 
   document.addEventListener('click',e=>{
+    // Evento para calcular precio al hacer clic en el badge de descuento
+    if(e.target.matches('.discount-badge')){
+      e.stopPropagation(); // Evitar otros clics
+      const price = parseFloat(e.target.dataset.price);
+      const disc = parseFloat(e.target.dataset.discount);
+      const final = price - (price * disc / 100);
+      
+      const modal = $('#discount-modal');
+      const details = $('#discount-details');
+      if(modal && details) {
+        details.innerHTML = `
+          <p style="font-size: 1.1rem; color: #666; text-decoration: line-through;">Precio Normal: ${formatCurrency(price)}</p>
+          <p style="font-size: 1.2rem; color: #ff4444; font-weight: bold;">Descuento: ${disc}%</p>
+          <hr style="border: 0; border-top: 1px dashed #ccc; margin: 15px 0;">
+          <p style="font-size: 0.9rem; color: #333;">Precio Final:</p>
+          <p class="price-big" style="font-size: 2rem; color: var(--color-accent); font-weight: 800; margin: 0;">${formatCurrency(final)}</p>
+        `;
+        modal.classList.remove('hidden');
+      } else {
+        // Fallback si no existe el modal
+        alert(`💰 PRECIO DE OFERTA\n\nPrecio Normal: ${formatCurrency(price)}\nDescuento: ${disc}%\n------------------\nPrecio Final: ${formatCurrency(final)}`);
+      }
+      return;
+    }
+
     if(e.target.matches('[data-id]')){
       addToCart(e.target.dataset.id); // Ya no usamos parseInt porque _id es string
     }
@@ -809,7 +946,30 @@ function setupEvents(){
 
   if($('#btn-products')){
     $('#btn-products').addEventListener('click',()=>{
-      window.scrollTo({top:0,behavior:'smooth'});
+      // Alternar filtro de ofertas
+      SHOW_OFFERS = !SHOW_OFFERS;
+      renderProducts();
+      showToast(SHOW_OFFERS ? 'Mostrando solo ofertas' : 'Mostrando todo el inventario');
+
+      // Buscar el contenedor del título "Inventario" (justo antes de la grid #products)
+      const inventoryHeader = $('#products')?.previousElementSibling;
+      const target = inventoryHeader || $('#products');
+
+      if(target){
+        // Calcular posición restando la altura del header sticky (aprox 90px)
+        const headerOffset = 90;
+        const elementPosition = target.getBoundingClientRect().top;
+        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+        window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+      }
+    });
+  }
+
+  // Botón de Contacto (Scroll al footer)
+  if($('#btn-contact')){
+    $('#btn-contact').addEventListener('click', () => {
+      $('.site-footer')?.scrollIntoView({ behavior: 'smooth' });
     });
   }
 
@@ -820,6 +980,44 @@ function setupEvents(){
       renderProducts();
     });
   }
+
+  // Eventos del Carrusel
+  const trackContainer = $('#carousel-container');
+  if(trackContainer) {
+    const prevBtn = $('#carousel-prev');
+    const nextBtn = $('#carousel-next');
+    
+    // Calcular ancho dinámicamente
+    const getScrollWidth = () => {
+      const slide = trackContainer.querySelector('.carousel-slide');
+      return slide ? slide.offsetWidth + 16 : 226; // 210 + 16 fallback
+    };
+
+    if(prevBtn) prevBtn.onclick = () => {
+      clearInterval(carouselInterval); // Pausar auto-scroll al interactuar
+      trackContainer.scrollBy({ left: -getScrollWidth(), behavior: 'smooth' });
+      startCarouselAutoScroll(); // Reiniciar
+    };
+    if(nextBtn) nextBtn.onclick = () => {
+      clearInterval(carouselInterval);
+      trackContainer.scrollBy({ left: getScrollWidth(), behavior: 'smooth' });
+      startCarouselAutoScroll();
+    };
+  }
+
+  // Evento de ordenamiento
+  if($('#sort-select')){
+    $('#sort-select').addEventListener('change', (e) => {
+      INVENTORY_SORT = e.target.value;
+      renderProducts();
+    });
+  }
+
+  // Cerrar modal de descuento
+  const closeDiscount = () => $('#discount-modal').classList.add('hidden');
+  if($('#close-discount')) $('#close-discount').addEventListener('click', closeDiscount);
+  if($('#btn-close-discount-modal')) $('#btn-close-discount-modal').addEventListener('click', closeDiscount);
+  if($('#discount-modal')) $('#discount-modal').addEventListener('click', (e) => { if(e.target.id === 'discount-modal') closeDiscount(); });
 
   // Helpers para errores
   const showError = (selector, msg) => {

@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Administración - BloomCare</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
   </head>
   <body>
     <header class="site-header">
@@ -45,6 +49,11 @@
             <div class="info-group">
               <label>Precio ($)</label>
               <input type="number" id="prod-price" step="1" min="0" placeholder="1000" required>
+            </div>
+
+            <div class="info-group">
+              <label>Descuento (%)</label>
+              <input type="number" id="prod-discount" step="1" min="0" max="100" placeholder="0 (Opcional)">
             </div>
 
             <div class="profile-actions" style="display: flex; gap: 10px;">

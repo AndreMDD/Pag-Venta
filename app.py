@@ -58,6 +58,7 @@ def handle_products():
         name = request.form.get('name')
         desc = request.form.get('desc')
         price = request.form.get('price')
+        discount = request.form.get('discount', 0)
         file = request.files.get('image')
 
         if not file or not name or not price:
@@ -77,7 +78,8 @@ def handle_products():
             'name': name,
             'desc': desc,
             'price': float(price),
-            'image': image_url
+            'image': image_url,
+            'discount': int(discount) if discount else 0
         })
         return jsonify({'ok': True, 'msg': 'Producto creado exitosamente'})
 
@@ -102,10 +104,10 @@ def handle_products():
     # Verificar si hay productos, si no, crear defaults
     if db.products.count_documents({}) == 0:
         defaults = [
-            {'name':'Compresas Suaves','price':1000,'desc':'Paquete de 20 compresas ultra suaves.','image':'https://images.unsplash.com/photo-1592928306923-7a1b9b2fec1b?auto=format&fit=crop&w=800&q=60'},
-            {'name':'Protectores Diarios','price':1000,'desc':'Protectores discretos para el día a día.','image':'https://images.unsplash.com/photo-1542831371-d531d36971e6?auto=format&fit=crop&w=800&q=60'},
-            {'name':'Copas Menstruales','price':1000,'desc':'Reutilizable, ecológica y cómoda.','image':'https://images.unsplash.com/photo-1603575448362-7b6d2d7f9d76?auto=format&fit=crop&w=800&q=60'},
-            {'name':'Toallitas Íntimas','price':1000,'desc':'Frescor y cuidado íntimo.','image':'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=800&q=60'}
+            {'name':'Compresas Suaves','price':800,'desc':'Paquete de 20 compresas ultra suaves.','image':'https://images.unsplash.com/photo-1592928306923-7a1b9b2fec1b?auto=format&fit=crop&w=800&q=60'},
+            {'name':'Protectores Diarios','price':1200,'desc':'Protectores discretos para el día a día.','image':'https://images.unsplash.com/photo-1542831371-d531d36971e6?auto=format&fit=crop&w=800&q=60'},
+            {'name':'Copa Menstrual Premium','price':2500,'desc':'Reutilizable, ecológica y cómoda.','image':'https://images.unsplash.com/photo-1603575448362-7b6d2d7f9d76?auto=format&fit=crop&w=800&q=60'},
+            {'name':'Kit de Bienestar','price':3200,'desc':'Set completo de cuidado íntimo.','image':'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=800&q=60', 'discount': 15}
         ]
         db.products.insert_many(defaults)
 
@@ -137,6 +139,7 @@ def update_product(product_id):
     name = request.form.get('name')
     desc = request.form.get('desc')
     price = request.form.get('price')
+    discount = request.form.get('discount', 0)
     file = request.files.get('image')
     
     if not name or not price:
@@ -145,7 +148,8 @@ def update_product(product_id):
     update_data = {
         'name': name,
         'desc': desc,
-        'price': float(price)
+        'price': float(price),
+        'discount': int(discount) if discount else 0
     }
 
     # Si se sube una nueva imagen, borrar la anterior y guardar la nueva

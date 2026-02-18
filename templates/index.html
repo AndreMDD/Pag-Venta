@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tienda de Productos Femeninos</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <!-- Google Fonts: Montserrat (Títulos) y Lato (Cuerpo) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
   </head>
   <body>
     <header class="site-header">
@@ -15,6 +19,7 @@
         </div>
         <nav>
           <button id="btn-products" class="nav-btn">Productos</button>
+          <button id="btn-contact" class="nav-btn">Contacto</button>
           <button id="btn-cart" class="nav-btn">Carrito (<span id="cart-count">0</span>)</button>
           <button id="btn-auth" class="nav-btn">Iniciar sesión / Registro</button>
         </nav>
@@ -26,6 +31,27 @@
         <h2>Cuidado y bienestar femenino</h2>
         <p>Productos seleccionados para tu comodidad y salud. Compra fácil y seguro.</p>
       </section>
+
+      <!-- Sección Carrusel (Destacados > 1500) -->
+      <section id="carousel-section" class="carousel-section hidden">
+        <h3>Nuestros productos más exclusivos</h3>
+        <div class="carousel-wrapper">
+          <button class="carousel-btn prev" id="carousel-prev">❮</button>
+          <div class="carousel-track-container" id="carousel-container">
+            <ul class="carousel-track" id="carousel-track"></ul>
+          </div>
+          <button class="carousel-btn next" id="carousel-next">❯</button>
+        </div>
+      </section>
+
+      <!-- Título para separar el Inventario del Carrusel -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
+        <h3 style="margin: 0; color: #333;">Inventario</h3>
+        <select id="sort-select" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; background: #fff; cursor: pointer;">
+          <option value="desc">Precio: Mayor a Menor</option>
+          <option value="asc">Precio: Menor a Mayor</option>
+        </select>
+      </div>
 
       <section id="products" class="products-grid">
         <!-- Productos generados por JS -->
@@ -91,6 +117,18 @@
           <button id="btn-extend-session" class="primary">Mantener sesión</button>
           <button id="btn-logout-session" class="btn">Cerrar sesión</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Modal de Descuento -->
+    <div id="discount-modal" class="modal hidden">
+      <div class="modal-content" style="text-align: center;">
+        <button id="close-discount" class="close">×</button>
+        <h3 style="color: var(--color-accent); margin-top: 0;">¡Oferta Especial!</h3>
+        <div id="discount-details" style="margin: 20px 0;">
+          <!-- Contenido dinámico -->
+        </div>
+        <button id="btn-close-discount-modal" class="btn primary">Entendido</button>
       </div>
     </div>
 
