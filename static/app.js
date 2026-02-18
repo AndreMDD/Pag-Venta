@@ -130,11 +130,9 @@ async function renderProducts(){
         li.className = 'carousel-slide product-card'; // Reutilizamos estilo de tarjeta
         li.innerHTML = `
           ${discountBadge}
-          <img src="${p.image}" alt="${p.name}">
-          <h4>${p.name}</h4>
-          <div class="card-actions">
-            ${priceHtml}
-            <button class="btn primary" data-id="${p._id}">🛒 Agregar</button>
+          < <h4>${p.name}</h4>
+          </div>v class="card-actions">
+            ${priceHtml}button class="btn primary" data-id="${p._id}">🛒 Agregar</button>
           </div>`;
         carouselTrack.appendChild(li);
       });
@@ -163,8 +161,10 @@ async function renderProducts(){
     const card = document.createElement('article');
     card.className='product-card';
     card.innerHTML = `
-      <img src="${p.image}" alt="${p.name}">
-      <h4>${p.name}</h4>
+      <div class="product-trigger" data-id="${p._id}" style="cursor:pointer;">
+        <img src="${p.image}" alt="${p.name}">
+        <h4>${p.name}</h4>
+      </div>
       <p>${p.desc}</p>
       <div class="card-actions">
         ${priceHtml}
@@ -298,6 +298,85 @@ function renderCart(){
   });
   totalEl.textContent = formatCurrency(total);
   count.textContent = qty;
+}
+
+// ---------- MODAL DE PRODUCTO (Quick View) ----------
+async function openProductModal(productId) {
+  const product = PRODUCTS_CACHE.find(p => p._id === productId);
+  if(!product) return;
+
+  const modal = $('#product-detail-modal');
+  if(!modal) return;
+
+  // 1. Rellenar datos del producto
+  $('#pm-image').src = product.image;
+  $('#pm-title').textContent = product.name;
+  $('#pm-desc').textContent = product.desc;
+  
+  // Precio
+  const priceContainer = $('#pm-price-container');
+  if(product.discount && product.discount > 0) {
+    const final = product.price - (product.price * product.discount / 100);
+    priceContainer.innerHTML = `
+      <span style="text-decoration: line-through; color: #999; font-size: 1rem;">${formatCurrency(product.price)}</span>
+      <span style="color: var(--color-accent); font-size: 1.5rem; font-weight:800;">${formatCurrency(final)}</span>
+    `;
+  } else {
+    priceContainer.innerHTML = `<span style="color: var(--color-accent); font-size: 1.5rem; font-weight:800;">${formatCurrency(product.price)}</span>`;
+  }
+
+  // Botón agregar
+  const addBtn = $('#pm-add-cart');
+  addBtn.onclick = () => {
+    addToCart(product._id);
+    showToast('Producto agregado al carrito');
+  };
+
+  // 2. Cargar Reseñas
+  const list = $('#pm-reviews-list');
+  list.innerHTML = '<li class="muted small">Cargando opiniones...</li>';
+  
+  try {
+    const res = await fetch(`/api/reviews/${product._id}`);
+    const data = await res.json();
+    list.innerHTML = '';
+    if(data.ok && data.reviews.length > 0) {
+      data.reviews.forEach(r => {
+        const li = document.createElement('li');
+        li.className = 'review-card';
+        li.innerHTML = `
+          <div style="display:flex; justify-content:space-between;">
+            <strong>${r.name}</strong>
+            <span style="color:#ffc107;">${'★'.repeat(r.rating)}</span>
+          </div>
+          <p style="margin:4px 0;">${r.comment}</p>
+        `;
+        list.appendChild(li);
+      });
+    } else {
+      list.innerHTML = '<li class="muted small">No hay opiniones aún.</li>';
+    }
+  } catch(e) { list.innerHTML = '<li class="error-msg">Error al cargar reseñas.</li>'; }
+
+  // 3. Configurar formulario de reseña
+  const form = $('#pm-review-form');
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const name = $('#pm-review-name').value;
+    const rating = $('#pm-review-rating').value;
+    const comment = $('#pm-review-comment').value;
+    
+    // Reutilizamos la API existente
+    await fetch('/api/reviews', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ product_id: product._id, name, rating, comment })
+    });
+    showToast('Opinión enviada');
+    openProductModal(product._id); // Recargar modal para ver la reseña
+  };
+
+  modal.classList.remove('hidden');
 }
 
 // ---------- AUTH (demo localStorage) ----------
@@ -824,6 +903,121 @@ function setupEvents(){
   if($('#profile-name')) renderProfile(); // Lógica específica de perfil
   if($('#admin-product-form')) renderAdminPanel(); // Lógica específica de admin
   
+  // Lógica específica para página de Detalle de Producto
+  const detailData = $('#product-detail-data');
+  if(detailData) {
+    // Inyectamos el producto actual en la caché para que funcione "addToCart"
+    PRODUCTS_CACHE.push({
+      _id: detailData.dataset.id,
+      name: detailData.dataset.name,
+      price: parseFloat(detailData.dataset.price),
+      image: detailData.dataset.image
+    });
+
+    // Lógica para enviar reseña
+    const reviewForm = $('#form-review');
+    if(reviewForm) {
+      reviewForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = reviewForm.querySelector('button');
+        const name = $('#review-name').value.trim();
+        const rating = $('#review-rating').value;
+        const comment = $('#review-comment').value.trim();
+        const productId = detailData.dataset.id;
+
+        // Validación Frontend: Evitar campos vacíos
+        if (!name || !comment) {
+          showToast('Por favor, completa todos los campos.');
+          return;
+        }
+        if (comment.length < 5) {
+          showToast('El comentario es muy corto.');
+          return;
+        }
+
+        toggleLoading(btn, true);
+
+        try {
+          const res = await fetch('/api/reviews', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ product_id: productId, name, rating, comment })
+          });
+          const data = await res.json();
+          
+          if(data.ok) {
+            showToast('¡Gracias por tu opinión!');
+            // Recargar la página para ver el comentario (o podríamos inyectarlo con JS)
+            setTimeout(() => window.location.reload(), 1000);
+          } else {
+            alert('Error al enviar reseña');
+          }
+        } catch(err) { console.error(err); alert('Error de conexión'); }
+        toggleLoading(btn, false);
+      });
+    }
+
+    // Botón para iniciar sesión desde la sección de reseñas (si no está logueado)
+    const triggerLoginBtn = $('#btn-trigger-login');
+    if(triggerLoginBtn) {
+      triggerLoginBtn.addEventListener('click', () => { $('#auth-modal').classList.remove('hidden'); });
+    }
+
+    // Lógica de Filtros de Reseñas
+    const btnAll = $('#btn-filter-all');
+    const btn5 = $('#btn-filter-5');
+    
+    if(btnAll && btn5) {
+      const filterReviews = (rating) => {
+        const reviews = $$('.review-card');
+        reviews.forEach(card => {
+          const cardRating = parseInt(card.dataset.rating);
+          if(rating === 'all' || cardRating === rating) {
+            card.classList.remove('hidden');
+          } else {
+            card.classList.add('hidden');
+          }
+        });
+      };
+
+      btnAll.addEventListener('click', () => { filterReviews('all'); btnAll.classList.add('active-filter'); btn5.classList.remove('active-filter'); });
+      btn5.addEventListener('click', () => { filterReviews(5); btn5.classList.add('active-filter'); btnAll.classList.remove('active-filter'); });
+    }
+
+    // Lógica de Ordenamiento de Reseñas
+    const sortSelect = $('#sort-reviews-select');
+    if(sortSelect) {
+      sortSelect.addEventListener('change', (e) => {
+        const order = e.target.value;
+        const container = $('#reviews-container');
+        const cards = Array.from(container.querySelectorAll('.review-card'));
+        
+        cards.sort((a, b) => {
+          const dateA = new Date(a.dataset.date);
+          const dateB = new Date(b.dataset.date);
+          return order === 'newest' ? dateB - dateA : dateA - dateB;
+        });
+        
+        // Reinsertar en el nuevo orden
+        cards.forEach(card => container.appendChild(card));
+      });
+    }
+
+    // Lógica del Botón Compartir
+    const shareBtn = $('#btn-share');
+    if(shareBtn) {
+      shareBtn.addEventListener('click', () => {
+        // Copiar URL actual al portapapeles
+        navigator.clipboard.writeText(window.location.href).then(() => {
+          showToast('¡Enlace copiado al portapapeles!');
+        }).catch(err => {
+          console.error('Error al copiar: ', err);
+          showToast('No se pudo copiar el enlace');
+        });
+      });
+    }
+  }
+  
   renderAuthState();
   
   // Eventos del modal de sesión
@@ -876,6 +1070,12 @@ function setupEvents(){
     }
     if(e.target.matches('[data-remove]')){
       removeFromCart(e.target.dataset.remove); // Ya no usamos parseInt
+    }
+    // Click en imagen/título para abrir modal
+    if(e.target.closest('.product-trigger')){
+      const trigger = e.target.closest('.product-trigger');
+      const id = trigger.dataset.id;
+      openProductModal(id);
     }
   });
   
@@ -1041,6 +1241,10 @@ function setupEvents(){
   };
 
   if($('#close-auth')) $('#close-auth').addEventListener('click', closeModal);
+  
+  // Cerrar modal de producto
+  if($('#close-product-detail')) $('#close-product-detail').addEventListener('click', () => $('#product-detail-modal').classList.add('hidden'));
+  if($('#product-detail-modal')) $('#product-detail-modal').addEventListener('click', (e) => { if(e.target.id === 'product-detail-modal') $('#product-detail-modal').classList.add('hidden'); });
 
   // Cerrar modal al hacer clic fuera (en el fondo oscuro)
   if($('#auth-modal')){
@@ -1048,6 +1252,13 @@ function setupEvents(){
       if (e.target.id === 'auth-modal') closeModal();
     });
   }
+
+  // Cerrar cualquier modal con la tecla ESC
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      $$('.modal').forEach(modal => modal.classList.add('hidden'));
+    }
+  });
 
   if($('#show-register')){
     $('#show-register').addEventListener('click',(e)=>{
@@ -1165,6 +1376,11 @@ function setupEvents(){
         
         closeModal();
         showToast('¡Bienvenida/o!');
+
+        // Si estamos en una página de producto, recargar para mostrar el formulario de reseñas
+        if(window.location.pathname.startsWith('/product/')) {
+          setTimeout(() => window.location.reload(), 1000);
+        }
         // No recargamos la página para que se vea el mensaje
       }, 1500);
     });

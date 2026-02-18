@@ -43,6 +43,38 @@ def admin():
         return redirect(url_for('home'))
     return render_template('admin.html')
 
+@app.route('/product/<product_id>')
+def product_detail(product_id):
+    db = get_db()
+    try:
+        product = db.products.find_one({'_id': ObjectId(product_id)})
+        if not product:
+            return redirect(url_for('home'))
+        product['_id'] = str(product['_id'])
+        # Obtener reseñas del producto (ordenadas por fecha descendente)
+        reviews = list(db.reviews.find({'product_id': product_id}).sort('date', -1))
+        
+        # Calcular promedio
+        avg_rating = 0
+        rating_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+        rating_percents = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+        total_reviews = len(reviews)
+
+        if total_reviews > 0:
+            avg_rating = sum(r['rating'] for r in reviews) / total_reviews
+            # Contar estrellas
+            for r in reviews:
+                r_val = r.get('rating', 0)
+                if 1 <= r_val <= 5:
+                    rating_counts[r_val] += 1
+            # Calcular porcentajes
+            for star in rating_counts:
+                rating_percents[star] = (rating_counts[star] / total_reviews) * 100
+            
+        return render_template('product.html', product=product, reviews=reviews, avg_rating=avg_rating, review_count=total_reviews, rating_counts=rating_counts, rating_percents=rating_percents)
+    except:
+        return redirect(url_for('home'))
+
 # --- API: PRODUCTOS (Mongo) ---
 @app.route('/api/products', methods=['GET', 'POST'])
 def handle_products():
@@ -229,6 +261,43 @@ def handle_cart():
         cart_doc = db.carts.find_one({'user_id': user_id})
         items = cart_doc['items'] if cart_doc else []
         return jsonify({'ok': True, 'items': items})
+
+# --- API: RESEÑAS ---
+@app.route('/api/reviews', methods=['POST'])
+def add_review():
+    if 'user_id' not in session:
+        return jsonify({'ok': False, 'msg': 'Debes iniciar sesión para dejar una reseña'}), 401
+
+    db = get_db()
+    data = request.get_json()
+    
+    product_id = data.get('product_id')
+    name = data.get('name')
+    rating = data.get('rating')
+    comment = data.get('comment')
+    
+    if not all([product_id, name, rating, comment]):
+        return jsonify({'ok': False, 'msg': 'Faltan datos obligatorios'}), 400
+        
+    db.reviews.insert_one({
+        'product_id': product_id,
+        'name': name,
+        'rating': int(rating),
+        'comment': comment,
+        'date': datetime.now().strftime("%Y-%m-%d")
+    })
+    return jsonify({'ok': True, 'msg': 'Reseña guardada'})
+
+@app.route('/api/reviews/<product_id>', methods=['GET'])
+def get_product_reviews(product_id):
+    db = get_db()
+    try:
+        reviews = list(db.reviews.find({'product_id': product_id}).sort('date', -1))
+        for r in reviews:
+            r['_id'] = str(r['_id'])
+        return jsonify({'ok': True, 'reviews': reviews})
+    except:
+        return jsonify({'ok': False, 'reviews': []})
 
 # --- API: ACTUALIZAR PERFIL ---
 @app.route('/api/profile', methods=['PUT'])

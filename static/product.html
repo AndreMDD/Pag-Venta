@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ product.name }} - BloomCare</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="/" style="text-decoration:none;"><h1 class="logo">BloomCare</h1></a>
+        <nav>
+          <a href="/" class="nav-btn" style="text-decoration:none;">Volver a la tienda</a>
+          <button id="btn-cart" class="nav-btn">Carrito (<span id="cart-count">0</span>)</button>
+          <button id="btn-auth" class="nav-btn">Iniciar sesión</button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- Elemento oculto para pasar datos a JS -->
+      <div id="product-detail-data" 
+           data-id="{{ product._id }}" 
+           data-name="{{ product.name }}" 
+           data-price="{{ product.price }}"
+           data-image="{{ product.image }}"
+           class="hidden"></div>
+
+      <div class="product-detail-wrapper">
+        <div class="product-detail-image">
+          <img src="{{ product.image }}" alt="{{ product.name }}">
+        </div>
+        <div class="product-detail-info">
+          <h2 style="font-size: 2.5rem; margin-bottom: 10px;">{{ product.name }}</h2>
+          <p class="muted" style="font-size: 1.1rem;">Referencia: {{ product._id }}</p>
+          
+          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+          
+          <p style="line-height: 1.8; font-size: 1.05rem;">{{ product.desc }}</p>
+          
+          <div class="product-detail-price">
+            {% if product.discount and product.discount > 0 %}
+              <span style="text-decoration: line-through; color: #999; font-size: 1.2rem;">${{ "{:,.0f}".format(product.price).replace(',', '.') }}</span>
+              <span style="color: var(--color-accent);">${{ "{:,.0f}".format(product.price - (product.price * product.discount / 100)).replace(',', '.') }}</span>
+              <span style="font-size: 1rem; background: #ff4444; color: white; padding: 4px 8px; border-radius: 4px; vertical-align: middle;">-{{ product.discount }}%</span>
+            {% else %}
+              ${{ "{:,.0f}".format(product.price).replace(',', '.') }}
+            {% endif %}
+          </div>
+
+          <button class="btn primary" data-id="{{ product._id }}" style="padding: 15px 30px; font-size: 1.1rem;">
+            🛒 Agregar al Carrito
+          </button>
+        </div>
+      </div>
+
+      <aside id="cart" class="cart hidden">
+        <h3>Tu carrito</h3>
+        <ul id="cart-items"></ul>
+        <div class="cart-footer">
+          <strong>Total: <span id="cart-total">0.00</span></strong>
+          <button id="checkout-btn" class="primary">Pagar</button>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Reutilizamos el footer -->
+    <footer class="site-footer">
+      <div class="container">
+        <div class="footer-bottom">
+          <p>© <span id="year"></span> BloomCare</p>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Modales necesarios para Auth -->
+    <div id="auth-modal" class="modal hidden">
+       <!-- (El contenido se genera dinámicamente o se puede copiar del index si se necesita login aquí) -->
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
